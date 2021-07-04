@@ -43,26 +43,38 @@ class MapDrawer:
 
 
 class PointPlayer(Player.Player):
-    def draw_ray(self, map_, screen):
+    def draw_ray_shadow(self, map_, screen):
         fov = 45
-        res = 360
+        res = 180
         dir_ = (structures.Vector2.Point(pygame.mouse.get_pos()) - self.position).normalized().rotated(-fov / 2)
         matrix = structures.RotationMatrix(1 / res * fov)
         for i in range(res):
             length, intersection = map_.cast_ray(self.position, dir_)
-            # pg_structures.draw_line_dashed(screen, (255, 255, 0), self.position.to_pos(),
-            #                                (self.position + dir_ * length).to_pos(), 3, 5)
             pygame.draw.line(screen, (255, 255, 0), self.position.to_pos(),
                              (self.position + dir_ * (length)).to_pos(), 3)
             dir_ *= matrix
-            dir_.rotate(1 / res * fov)
-        # pygame.draw.circle(screen, pygame.Color('blue'), tuple(intersection), 5, 1)
+
+    def draw_ray_camera(self, map_, screen):
+        self.fov = 66
+        self.camera_plane_length = structures.DegTrigo.tan(self.fov / 2)
+        W = 100
+        dir_ = (structures.Vector2.Point(pygame.mouse.get_pos()) - self.position).normalized()
+        for x in range(W):
+            camera_plane = dir_.tangent() * self.camera_plane_length
+            pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
+            ray_direction = dir_ + camera_plane * pixel_camera_pos
+            length, intersection = map_.cast_ray(self.position, ray_direction, camera_plane)
+
+            pygame.draw.line(screen, (255, 0, 0), intersection.to_pos(),
+                             (intersection - dir_.normalized() * length).to_pos(), 3)
+
+            pygame.draw.circle(screen, pygame.Color('blue'), tuple(intersection), 5, 1)
 
     def draw(self, screen, map_):
         pos = self.position.to_pos()
         pygame.draw.circle(screen, pygame.Color('red'), pos, 5)
 
-        self.draw_ray(map_, screen)
+        self.draw_ray_shadow(map_, screen)
 
 
 def main():

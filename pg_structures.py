@@ -26,7 +26,7 @@ class DisplayMods:
 
     @classmethod
     def FullScreenAccelerated(cls):
-        return pg.display.set_mode(cls.MONITOR_RESOLUTION, pg.HWSURFACE)
+        return pg.display.set_mode(cls.MONITOR_RESOLUTION, pg.HWSURFACE | pg.DOUBLEBUF)
 
     @classmethod
     def WindowedFullScreen(cls):

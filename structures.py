@@ -224,14 +224,8 @@ class Vector2(PrivateConstructor):
     def sign(self):
         return Vector2.Cartesian(sign(self.x), sign(self.y))
 
-    def normal(self):
-        return Vector2.Cartesian(-self.y, self.x)
-
-    def perpendicular(self):
-        return self.normal()
-
     def tangent(self):
-        return self.normal()
+        return Vector2.Cartesian(-self.y, self.x)
 
     def floor(self):
         if math.isnan(self.x):
