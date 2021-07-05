@@ -1,4 +1,4 @@
-import Map
+import FasterMap as Map
 import pygame
 import structures
 import pg_structures
@@ -30,7 +30,7 @@ class MapDrawer:
         for row in self.map.rows():
             rect.x = 0
             for tile in row:
-                if not tile == '0':
+                if not tile == 0:
                     pass
                     pygame.draw.rect(bg, pygame.Color('black'), rect)
                 rect.x += self.map.tile_size
@@ -44,12 +44,16 @@ class MapDrawer:
 
 class PointPlayer(Player.Player):
     def draw_ray_shadow(self, map_, screen):
+        map_: Map.Map
         fov = 45
         res = 180
-        dir_ = (structures.Vector2.Point(pygame.mouse.get_pos()) - self.position).normalized().rotated(-fov / 2)
+        dir_ = (structures.Vector2(*pygame.mouse.get_pos()) - self.position) * structures.RotationMatrix(-fov / 2)
+        dir_ = dir_.normalized()
         matrix = structures.RotationMatrix(1 / res * fov)
         for i in range(res):
-            length, intersection = map_.cast_ray(self.position, dir_)
+            length, intersection = map_.cast_ray(*map_.to_local(self.position), *dir_)
+            length = map_.to_global(length)
+            intersection = map_.to_global(intersection)
             pygame.draw.line(screen, (255, 255, 0), self.position.to_pos(),
                              (self.position + dir_ * (length)).to_pos(), 3)
             dir_ *= matrix
@@ -63,8 +67,9 @@ class PointPlayer(Player.Player):
             camera_plane = dir_.tangent() * self.camera_plane_length
             pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
             ray_direction = dir_ + camera_plane * pixel_camera_pos
-            length, intersection = map_.cast_ray(self.position, ray_direction, camera_plane)
-
+            length, intersection, _ = map_.cast_ray(self.position, ray_direction, camera_plane)
+            length = map_.to_global(length)
+            intersection = map_.to_global(intersection)
             pygame.draw.line(screen, (255, 0, 0), intersection.to_pos(),
                              (intersection - dir_.normalized() * length).to_pos(), 3)
 
@@ -76,6 +81,9 @@ class PointPlayer(Player.Player):
 
         self.draw_ray_shadow(map_, screen)
 
+    def set_direction(self, x=None, y=None):
+        self.moving_direction = self.moving_direction.sign()
+        super(PointPlayer, self).set_direction(x, y)
 
 def main():
     pygame.init()
@@ -85,7 +93,7 @@ def main():
     fps = 1000
     map_drawer = MapDrawer(screen)
     background = map_drawer.get_background()
-    player = PointPlayer(100, 100)
+    player = PointPlayer(150, 150)
 
     font = pygame.font.SysFont("Roboto", 20)
     color = pygame.Color('white')
