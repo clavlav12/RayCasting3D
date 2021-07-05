@@ -3,6 +3,7 @@ import structures
 import numpy as np
 from numba import njit
 
+
 # arrauy
 
 
@@ -140,19 +141,23 @@ def cast_ray(array: np.array, startX, startY, directionX, directionY):
 # @
 
 @njit(nogil=True)
-def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY):
+def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, height):
     """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
-    casted_array = np.zeros(W // resolution)
     for x in range(0, W, resolution):
         pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
         length, side = cast_ray(array, posX, posY, dirX + cameraX * pixel_camera_pos,
-                                     dirY + cameraY * pixel_camera_pos)
+                                dirY + cameraY * pixel_camera_pos)
 
-        m = 1
-        if not side:
-            m = -1
-        casted_array[x] = length * m
-    return casted_array
+        line_height = .5 * H / length if length != 0 \
+            else H  # Multiply by a greater than one value to make walls higher
+
+        draw_start = - height * line_height / 2 + H / 2 + tilt
+        if draw_start < 0:
+            line_height += draw_start
+            draw_start = 0
+
+        c = max(1, int((255.0 - length * 27.2) * (1 - side * .25)))
+        yield x, draw_start, line_height, c
 
 
 @njit

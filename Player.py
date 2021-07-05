@@ -2,14 +2,17 @@ import structures
 import pygame
 import FasterMap as Map
 
+dx = 0.000001
+
 
 class Player:
-    def __init__(self, x=0, y=0):
+    def __init__(self, x=0, y=0, speed=500):
         self.key_to_function = {}
-        self.speed = 500
+        self.speed = speed
+        self.distance_from_wall = 10
         self.position = structures.Vector2(x, y)
         self.moving_direction = structures.Vector2(0, 0)
-        self.looking_direction = structures.Vector2(0, 0)
+        self.looking_direction = structures.Vector2(1, 0)
         self.setup_movement()
 
     def key_func(self, keys):
@@ -27,44 +30,62 @@ class Player:
         shift = self.moving_direction * self.speed * dt
 
         self.position.x += shift.x
+        self.x_collision(shift)
 
-        platform = self.platform_collision_check()
+        self.position.y += shift.y
+        self.y_collision(shift)
+
+    def x_collision(self, shift):
+        platform = self.platform_rect_check()
         if platform is not None:
             platform: pygame.Rect
             if shift.x > 0:  # Moved right, move it back left
-                self.position.x = platform.left - 1
+                self.position.x = platform.left - self.distance_from_wall / 2 - dx
             else:  # Moved left, move it back right
-                self.position.x = 1 + platform.right
+                self.position.x = self.distance_from_wall / 2 + platform.right + dx
+        return platform
 
-        self.position.y += shift.y
-
-        platform = self.platform_collision_check()
+    def y_collision(self, shift):
+        platform = self.platform_rect_check()
         if platform is not None:
             platform: pygame.Rect
             if shift.y > 0:  # Moved down, move it back up
-                self.position.y = platform.top - 1
+                self.position.y = platform.top - self.distance_from_wall / 2 - dx
             else:  # Moved up, move it back down
-                self.position.y = 1 + platform.bottom
+                self.position.y = self.distance_from_wall / 2 + platform.bottom + dx
+        return platform
 
-    def platform_collision_check(self):
+
+    def platform_rect_check(self) -> pygame.Rect:
+        hw = structures.Vector2(self.distance_from_wall / 2, 0)
+        hh = structures.Vector2(0, self.distance_from_wall / 2)
+
+        return self.platform_collision_check(self.position - hw + hh) or \
+               self.platform_collision_check(self.position + hw + hh) or \
+               self.platform_collision_check(self.position + hw - hh) or \
+               self.platform_collision_check(self.position - hw - hh)
+
+    @staticmethod
+    def platform_collision_check(point: object) -> object:
         try:
-            tile, rect = Map.Map.instance.get_tile_global(*self.position)
+            tile, rect = Map.Map.instance.get_tile_global(*point)
             if tile != 0:
                 return pygame.Rect(*rect)
             return None
         except IndexError:
             return None
 
-    def set_direction(self, x=None, y=None):
-        self.moving_direction.set_values(x, y)
+    def set_moving_direction(self, x=None, y=None):
+        if self.moving_direction:
+            self.moving_direction = self.moving_direction.normalized()
+        self.moving_direction += structures.Vector2(x or 0, y or 0)
         self.moving_direction = self.moving_direction.normalized()
 
     def setup_movement(self):
         self.up_down_left_right_movements()
 
     def up_down_left_right_movements(self):
-        self.key_to_function[pygame.K_UP] = lambda: self.set_direction(y=-1)
-        self.key_to_function[pygame.K_DOWN] = lambda: self.set_direction(y=1)
-        self.key_to_function[pygame.K_LEFT] = lambda: self.set_direction(x=-1)
-        self.key_to_function[pygame.K_RIGHT] = lambda: self.set_direction(x=1)
-
+        self.key_to_function[pygame.K_UP] = lambda: self.set_moving_direction(y=-1)
+        self.key_to_function[pygame.K_DOWN] = lambda: self.set_moving_direction(y=1)
+        self.key_to_function[pygame.K_LEFT] = lambda: self.set_moving_direction(x=-1)
+        self.key_to_function[pygame.K_RIGHT] = lambda: self.set_moving_direction(x=1)

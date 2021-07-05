@@ -118,12 +118,24 @@ class DegTrigo:
 
 
 class RotationMatrix:
-    def __init__(self, angle):
-        angle = math.radians(angle)
+    ROT_INIT = False
+    ROT90 = None
+    ROT180 = None
+    ROT270 = None
+
+    def __init__(self, angle, radians=False):
+        if not radians:
+            angle = math.radians(angle)
         self.m00 = math.cos(angle)
         self.m10 = -math.sin(angle)
         self.m01 = -self.m10
         self.m11 = self.m00
+
+        if not RotationMatrix.ROT_INIT:
+            RotationMatrix.ROT_INIT = True
+            RotationMatrix.ROT90 = RotationMatrix(90)
+            RotationMatrix.ROT180 = RotationMatrix(180)
+            RotationMatrix.ROT270 = RotationMatrix(270)
 
     def __mul__(self, other):
         if isinstance(other, Vector2):
@@ -320,7 +332,7 @@ class Vector2:
         return NotImplemented
 
     def __bool__(self):
-        return bool(round(self.r, 5))
+        return bool(self.x and self.y)
 
     def __mod__(self, other):
         if isinstance(other, (float, int)):

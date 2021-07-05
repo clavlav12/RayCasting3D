@@ -7,14 +7,34 @@ from threading import Thread
 
 
 class Player3D(Player):
+
+    def __init__(self, x: int = 0, y: int = 0):
+        super(Player3D, self).__init__(x, y, 50)
+
+    def update(self, dt, keys):
+        global tilt
+        # diff = (structures.Vector2(*(pygame.mouse.get_pos())) -
+        #                             structures.Vector2(*pg_structures.DisplayMods.current_resolution)/2).normalized()
+        diffX = pygame.mouse.get_pos()[0] - pg_structures.DisplayMods.current_width / 2
+        self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX * 0.01, True)
+
+        diffY = pygame.mouse.get_pos()[1] - pg_structures.DisplayMods.current_height / 2
+        tilt -= diffY * 3
+        head_move = 1080
+        tilt = max(-head_move, min(head_move, tilt))
+
+        pygame.mouse.set_pos(pg_structures.DisplayMods.current_width / 2, pg_structures.DisplayMods.current_height / 2)
+
+        super(Player3D, self).update(dt, keys)
+
     def render_rays(self, map_, screen, screen_size):
         self.fov = 66
         self.camera_plane_length = structures.DegTrigo.tan(self.fov / 2)
 
         W, H = screen_size
 
-        dir_ = (structures.Vector2(*(pygame.mouse.get_pos()) - self.position)).normalized()
-        resolution = 3
+        dir_ = self.looking_direction.normalized()
+        resolution = 1
         camera_plane = dir_.tangent() * self.camera_plane_length
 
         t = Thread(target=self.cast_and_draw, args=(W, resolution, dir_, camera_plane, map_, screen, H))
@@ -30,33 +50,19 @@ class Player3D(Player):
         posY = pos[1]
         cameraX = camera_plane.x
         cameraY = camera_plane.y
-        for x in range(0, W, resolution):
-            pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
-            length, side = map_.cast_ray(posX, posY, dirX + cameraX * pixel_camera_pos,
-                                         dirY + cameraY * pixel_camera_pos)
-            self.draw_ray(screen, x, length, H, side, resolution)
+        for x, start, height, color in \
+                cast_screen(W, resolution, map_.map(), posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, h_):
+            pygame.draw.rect(screen, (color, color, color), (x, start, resolution, height))
 
-    @staticmethod
-    def draw_ray(screen, x, ray_length, height, side, resolution):
-        line_height = height / ray_length if ray_length != 0 \
-            else height  # Multiply by a greater than one value to make walls higher
-
-        half_height = height / 2
-        half_line = line_height / 2
-
-        draw_start = max(-half_line + half_height, 0) + tilt
-        draw_end = min(half_line + half_height, height) + tilt
-
-        # print(side, ray_length)
-        c = min(int(max(1, (255.0 - ray_length * 27.2) * (1 - side * .25))), 255)
-        try:
-            if resolution == 1:
-                pygame.draw.line(screen, (0, 0, c), (x, draw_start), (x, draw_end))
-            else:
-                pygame.draw.rect(screen, (0, 0, c), (x, draw_start, resolution, draw_end - draw_start))
-        except Exception as e:
-            print((0, 0, c), ray_length)
-            raise e
+    def setup_movement(self):
+        self.key_to_function[pygame.K_w] = \
+            lambda: self.set_moving_direction(*self.looking_direction)
+        self.key_to_function[pygame.K_d] = \
+            lambda: self.set_moving_direction(*(self.looking_direction * structures.RotationMatrix.ROT90))
+        self.key_to_function[pygame.K_s] = \
+            lambda: self.set_moving_direction(*(self.looking_direction * structures.RotationMatrix.ROT180))
+        self.key_to_function[pygame.K_a] = \
+            lambda: self.set_moving_direction(*(self.looking_direction * structures.RotationMatrix.ROT270))
 
 
 class Render3D:
@@ -75,43 +81,48 @@ class Render3D:
 
 
 tilt = 10
+h_ = 1
 
 
 def main():
-    global tilt
+    global tilt, h_
     pygame.init()
     # screen = pg_structures.DisplayMods.Windowed((500, 500))
     screen = pg_structures.DisplayMods.FullScreenAccelerated()
     screen.set_alpha(None)
+    pygame.mouse.set_visible(False)
+
     W, H = screen.get_size()
     clock = pygame.time.Clock()
     running = 1
     fps = 1000
     player = Player3D(100, 100)
 
-    font = pygame.font.SysFont("Roboto", 20)
+    font = pygame.font.SysFont("Roboto", 40)
     color = pygame.Color('white')
-    background = pygame.Surface(screen.get_size())
+
+    background = pygame.Surface((screen.get_width(), screen.get_height() * 3))
     background.fill(pygame.Color('black'))
+    background = background.convert()
 
     floor_colour = (50, 50, 50)
     ceiling_colour = (135, 206, 235)
+    # ceiling_colour = (50, 50, 50)
+    pygame.draw.rect(background, ceiling_colour, (0, 0, W, H * 1.5))
+    pygame.draw.rect(background, floor_colour, (0, H * 1.5, W, H * 1.5))
 
     map_ = Map.from_file('map2.txt')
-    t = None
 
     fps = 0
     frames = 0
 
     FPS = 1000
     average_frame = 1000 / FPS
+    pygame.mouse.set_pos(pg_structures.DisplayMods.current_width / 2, pg_structures.DisplayMods.current_height / 2)
 
     while running:
-        new_bg = background.copy()
-        pygame.draw.rect(new_bg, ceiling_colour, (0, 0, W, H // 2 + tilt))
-        pygame.draw.rect(new_bg, floor_colour, (0, 0, W, H // 2 + tilt))
-
-        screen.blit(new_bg, (0, 0))
+        h_ = min(2 - .3, max(h_, 0 + .3))
+        screen.blit(background, (0, 0), (0, H - tilt, W, H))
 
         events = pygame.event.get()
         for event in events:
@@ -122,19 +133,22 @@ def main():
                 running = 0
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:
-                    tilt += 10
+                    h_ += .1
                 elif event.button == 5:
-                    tilt -= 10
+                    h_ -= .1
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LCTRL:
+                    h_ += .7
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_LCTRL:
+                    h_ -= .7
 
         keys = pygame.key.get_pressed()
 
         elapsed_real = clock.tick(FPS)
         elapsed = min(elapsed_real / 1000.0, 1 / 30)
 
-        if tilt > 0:
-            player.render_rays(map_, screen, screen.get_size())
-        else:
-            player.render_rays2(map_, screen, screen.get_size())
+        player.render_rays(map_, screen, screen.get_size())
 
         player.update(elapsed, keys)
 
@@ -146,12 +160,10 @@ def main():
         average_frame += 0.1 * elapsed_real
 
         fps_sur = font.render(str(round(1000 / average_frame)), False, color)
-        screen.blit(fps_sur, (30, 0))
-        tilt_sur = font.render(str(tilt), False, pygame.Color('white'))
-        screen.blit(tilt_sur, (0, 0))
+        screen.blit(fps_sur, (0, 0))
+        tilt_sur = font.render(str(h_), False, pygame.Color('white'))
+        screen.blit(tilt_sur, (0, 40))
 
-        if t is not None:
-            t.join()
         pygame.display.flip()
     print(fps / frames)
 

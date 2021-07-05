@@ -81,9 +81,9 @@ class PointPlayer(Player.Player):
 
         self.draw_ray_shadow(map_, screen)
 
-    def set_direction(self, x=None, y=None):
+    def set_moving_direction(self, x=None, y=None):
         self.moving_direction = self.moving_direction.sign()
-        super(PointPlayer, self).set_direction(x, y)
+        super(PointPlayer, self).set_moving_direction(x, y)
 
 def main():
     pygame.init()

@@ -3,12 +3,24 @@ import numpy as np
 from win32api import GetSystemMetrics
 
 
+def screen_maker(func):
+    """Decorator - creates a screen, then updates class's properties"""
+    def inner(*args, **kwargs):
+        val = func(DisplayMods, *args, **kwargs)
+        size = val.get_size()
+        DisplayMods.current_width, DisplayMods.current_height = size
+        DisplayMods.current_resolution = size
+        return val
+    return inner
+
+
 class DisplayMods:
     BASE_WIDTH = 1728
     BASE_HEIGHT = 972
 
     current_width = BASE_WIDTH
     current_height = BASE_HEIGHT
+    current_resolution = (current_width, current_height)
 
     MONITOR_WIDTH = GetSystemMetrics(0)
     MONITOR_HEIGHT = GetSystemMetrics(1)
@@ -18,27 +30,33 @@ class DisplayMods:
 
     @classmethod
     def get_resolution(cls):
+        """Returns the current resolution of the screen"""
         return cls.current_width, cls.current_height
 
-    @classmethod
+    @screen_maker
     def FullScreen(cls):
+        """Generates a fullscreen display"""
         return pg.display.set_mode(cls.MONITOR_RESOLUTION, pg.FULLSCREEN)
 
-    @classmethod
+    @screen_maker
     def FullScreenAccelerated(cls):
+        """Generates a fullscreen display, hardware accelerated."""
         return pg.display.set_mode(cls.MONITOR_RESOLUTION, pg.HWSURFACE | pg.DOUBLEBUF)
 
-    @classmethod
+    @screen_maker
     def WindowedFullScreen(cls):
+        """Generates a windowed fullscreen display"""
         return pg.display.set_mode(cls.MONITOR_RESOLUTION, pg.NOFRAME, display=0)
 
-    @classmethod
+    @screen_maker
     def Windowed(cls, size):
+        """Generates a windowed display"""
         cls.current_width, cls.current_height = size
         return pg.display.set_mode((cls.current_width, cls.current_height))
 
-    @classmethod
+    @screen_maker
     def Resizable(cls, size):
+        """Generates a resizable windowed display"""
         cls.current_width, cls.current_height = size
         return pg.display.set_mode((cls.current_width, cls.current_height), pg.RESIZABLE)
 
