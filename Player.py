@@ -12,7 +12,7 @@ class Player:
         self.distance_from_wall = 10
         self.position = structures.Vector2(x, y)
         self.moving_direction = structures.Vector2(0, 0)
-        self.looking_direction = structures.Vector2(1, 0)
+        self.looking_direction = structures.Vector2(0.88838, 0.45911)
         self.setup_movement()
 
     def key_func(self, keys):

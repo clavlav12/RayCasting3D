@@ -143,6 +143,7 @@ def cast_ray(array: np.array, startX, startY, directionX, directionY):
 @njit(nogil=True)
 def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, height):
     """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
+    inv_height = 2 - height
     for x in range(0, W, resolution):
         pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
         length, side = cast_ray(array, posX, posY, dirX + cameraX * pixel_camera_pos,
@@ -151,7 +152,7 @@ def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, 
         line_height = .5 * H / length if length != 0 \
             else H  # Multiply by a greater than one value to make walls higher
 
-        draw_start = - height * line_height / 2 + H / 2 + tilt
+        draw_start = - inv_height * line_height / 2 + H / 2 + tilt
         if draw_start < 0:
             line_height += draw_start
             draw_start = 0
