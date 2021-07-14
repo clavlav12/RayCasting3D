@@ -151,6 +151,9 @@ class Vector2:
         self.x = x
         self.y = y
 
+    def angle(self):
+        return math.degrees(math.atan2(self.y, self.x)) + 180
+
     def normalized(self):
         mag = math.hypot(self.x, self.y)
         return Vector2(self.x / mag, self.y / mag)

@@ -75,7 +75,7 @@ class Map(structures.Singleton):
 
 
 @njit(nogil=True)
-def cast_ray(array: np.array, startX, startY, directionX, directionY):
+def cast_ray(array: np.array, startX, startY, directionX, directionY, texWidth):
     """
     Cast a ray from start_pos in the direction of the unit vector direction
     and returns it's length
@@ -135,21 +135,54 @@ def cast_ray(array: np.array, startX, startY, directionX, directionY):
 
     # intersection = start_pos + direction * distance
     #
-    return wall_distance, side
 
+    if not side:
+        wallX = startY + wall_distance * directionY
+    else:
+        wallX = startX + wall_distance * directionX
+    wallX = abs((wallX - int(wallX)) - 1)
 
-# @
+    texX = int(wallX * texWidth)
+    if side == 0 and directionX > 0: texX = texWidth - texX - 1
+    if side == 1 and directionY < 0: texX = texWidth - texX - 1
+
+    return wall_distance, side, texX
+
 
 @njit(nogil=True)
-def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, height):
+def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, height, texWidth,
+                walls_ratio=1):
     """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
     inv_height = 2 - height
     for x in range(0, W, resolution):
         pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
+        length, side, texX = cast_ray(array, posX, posY, dirX + cameraX * pixel_camera_pos,
+                                      dirY + cameraY * pixel_camera_pos, texWidth)
+
+        line_height = walls_ratio * H / length #if length != 0 \
+           # else H  # Multiply by a greater than one value to make walls higher
+
+        draw_start = - inv_height * line_height / 2 + H / 2 + tilt
+        # if draw_start < 0:
+        #     line_height += draw_start
+        #     draw_start = 0
+
+        c = max(1, int((255.0 - length * 27.2) * (1 - side * .25)))
+
+        yield x, draw_start, line_height, c, texX
+
+
+@njit(nogil=True)
+def cast_screen_partly(start, end, W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, height,
+                       walls_ratio=.5):
+    """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
+    inv_height = 2 - height
+    for x in range(start, end, resolution):
+        pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
         length, side = cast_ray(array, posX, posY, dirX + cameraX * pixel_camera_pos,
                                 dirY + cameraY * pixel_camera_pos)
 
-        line_height = .5 * H / length if length != 0 \
+        line_height = walls_ratio * H / length if length != 0 \
             else H  # Multiply by a greater than one value to make walls higher
 
         draw_start = - inv_height * line_height / 2 + H / 2 + tilt
@@ -161,12 +194,19 @@ def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, 
         yield x, draw_start, line_height, c
 
 
-@njit
-def tf():
-    yield 3, True
-    yield 5, False
-
-
 if __name__ == '__main__':
-    for x in tf():
-        print(x)
+    fast = Map.from_file('map2.txt')
+
+    import timeit
+
+    l = '''
+c = cast_screen(1920, 1, fast.map(), 3.10000002, 3.10000002, 0.9297758477079633,
+                 -0.23906392650695832, 0.36812616454000946, 0.6038034954732037, 1080, -156.0, 1.0)
+for i in c:
+    pass
+    '''
+    print(1, timeit.timeit(l,
+                           number=1000,
+                           globals=globals(),
+                           setup=l
+                           ))
