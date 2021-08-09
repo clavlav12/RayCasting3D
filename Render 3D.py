@@ -4,6 +4,7 @@ from FasterMap import Map, cast_screen, cast_floor_ceiling
 import structures
 import pg_structures
 import numpy as np
+from threading import Thread
 
 
 class Player3D(Player):
@@ -214,7 +215,7 @@ class Background:
             start = self.H // 2
         if self.type in (structures.BackgroundType.image, structures.BackgroundType.solid):
             rect = screen.blit(self.background, (0, start + vertical_angle * self.is_floor), (0, 0, self.W, self.H // 2 + sign * vertical_angle))
-            pygame.draw.rect(screen, (255, 0, 0), rect, 1)
+            # pygame.draw.rect(screen, (255, 0, 0), rect, 1)
         elif self.type == structures.BackgroundType.panoramic:
 
             screen.blit(self.panoramic_image, (0, start + vertical_angle * self.is_floor),
@@ -225,7 +226,7 @@ class Background:
 
         elif self.type == structures.BackgroundType.textured:
             other = self.floor if self.floor is not self else self.ceiling
-            if other.type == structures.BackgroundType.textured:
+            if other.type == structures.BackgroundType.textured and False:
                 if self.is_floor:
                     return  # if both are textured only one casting is required
                 else:  # cast both
@@ -264,9 +265,20 @@ class Background:
         return screen
 
     @classmethod
-    def draw_background(cls, screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height):
-        cls.floor.draw(screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height)
-        cls.ceiling.draw(screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height)
+    def draw_background(cls, screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height, threaded=None):
+        if threaded is None:  # automatically decide
+            threaded = cls.floor.type == cls.ceiling.type == structures.BackgroundType.textured
+        args = (screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height)
+        if threaded:
+            t1 = Thread(target=cls.floor.draw, args=args)
+            t1.start()
+            t2 = Thread(target=cls.ceiling.draw, args=args)
+            t2.start()
+            t1.join()
+            t2.join()
+        else:
+            cls.floor.draw(*args)
+            cls.ceiling.draw(*args)
 
 
 class Render3D:
@@ -308,9 +320,9 @@ class Render3D:
 
         # print(bg.get_size())
         Background.set_background(
-            structures.BackgroundType.solid,
             structures.BackgroundType.textured,
-            floor_colour,
+            structures.BackgroundType.textured,
+            'wood2.png',
             'wood2.png',
             *self.screen.get_size()
         )
@@ -404,9 +416,9 @@ class Render3D:
 def main():
     pygame.init()
     # screen = pg_structures.DisplayMods.Windowed((800, 800))
-    real_screen = pg_structures.DisplayMods.FullScreenAccelerated()
+    screen = pg_structures.DisplayMods.FullScreenAccelerated()
     resolution = 1
-    screen = pygame.Surface((real_screen.get_width() // resolution, real_screen.get_height() // resolution)).convert()
+    # screen = pygame.Surface((real_screen.get_width() // resolution, real_screen.get_height() // resolution)).convert()
     screen.set_alpha(None)
     pygame.mouse.set_visible(False)
 
@@ -470,8 +482,8 @@ def main():
         elapsed_real = clock.tick(FPS)
         elapsed = elapsed_real / 1000 # min(elapsed_real / 1000.0, 1 / 30)
 
-        new = screen
-        new = pygame.transform.scale(screen, real_screen.get_size(), real_screen)
+        # new = screen
+        # new = pygame.transform.scale(screen, real_screen.get_size(), real_screen)
         pygame.display.flip()
 
     print(fps / frames)
