@@ -1,14 +1,15 @@
 from Player import Player
 import pygame
-from FasterMap import Map, cast_screen
+from FasterMap import Map, cast_screen, cast_floor_ceiling
 import structures
 import pg_structures
-from threading import Thread
+import numpy as np
 
 
 class Player3D(Player):
 
     def __init__(self, x: int = 0, y: int = 0):
+        self.fov = 60
         self.regular_speed = 50
         self.crouching_speed = self.regular_speed / 2
         self.running_speed = self.regular_speed * 2
@@ -25,7 +26,7 @@ class Player3D(Player):
 
         sensitivity = .5
 
-        self.sensitivity_x = 0.01 * sensitivity
+        self.sensitivity_x = .02 * sensitivity
         self.sensitivity_y = 8 * sensitivity
 
         self._vertical_angle = self.ground_height
@@ -34,6 +35,8 @@ class Player3D(Player):
         self.max_height = 2
         self.min_height = 0.3
         self.max_view_angle = pg_structures.DisplayMods.current_height
+
+        self.with_ = False
 
     @property
     def height(self):
@@ -60,10 +63,10 @@ class Player3D(Player):
 
     def update(self, dt, keys):
         diffX = pygame.mouse.get_pos()[0] - pg_structures.DisplayMods.current_width / 2
-        self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX * self.sensitivity_x, True)
-
+        self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / self.fov * 30, False)
+        # self.looking_direction = self.looking_direction * structures.RotationMatrix(90 * dt * self.sensitivity_x, True)
         diffY = pygame.mouse.get_pos()[1] - pg_structures.DisplayMods.current_height / 2
-        # self.vertical_angle -= diffY * self.sensitivity_y
+        self.vertical_angle -= diffY * self.sensitivity_y
         pygame.mouse.set_pos(pg_structures.DisplayMods.current_width / 2, pg_structures.DisplayMods.current_height / 2)
 
         self.ground_height = 1
@@ -144,95 +147,256 @@ class Player3D(Player):
             self.speed = self.running_speed
 
 
+class Background:
+    ceiling = None
+    floor = None
+    W = -1
+    H = -1
+
+    @classmethod
+    def set_background(cls, ceiling_type, floor_type, ceiling_arg, floor_arg, W, H):
+        """
+        :param ceiling_type: Type of ceiling (structures.BackgroundType)
+        :param floor_type:  Type of floor (structures.BackgroundType)
+        :param ceiling_arg: Argument that is used to make ceiling (color for solid, panoramic image filename for
+            panoramic, texture filename for textured and surface for image)
+        :param floor_arg: Same as ceiling_arg for floor
+        :param W: Width of screen
+        :param H: Height of screen
+        """
+        cls.W = W
+        cls.H = H
+        cls.ceiling = cls(ceiling_type, ceiling_arg, False)
+        cls.floor = cls(floor_type, floor_arg, True)
+
+    def __init__(self, type_, arg, is_floor):
+        self.type = type_
+        self.arg = arg
+        self.is_floor = is_floor
+
+        self.background = pygame.Surface((self.W * 3, self.H * 1.5)).convert()
+        self.background.set_alpha(None)
+
+        {
+            structures.BackgroundType.solid: self.solid_init,
+            structures.BackgroundType.panoramic: self.panoramic_init,
+            structures.BackgroundType.textured: self.textured_init,
+            structures.BackgroundType.image: self.imaged_init
+        }[self.type]()
+
+    def solid_init(self):
+        pygame.draw.rect(self.background, self.arg, (0, 0, self.W, self.H * 1.5))
+
+    def panoramic_init(self):
+        if isinstance(self.arg, str):
+            self.panoramic_image = pygame.image.load('Assets/Images/Background/' + self.arg).convert()
+            assert self.panoramic_image.get_size() == (self.W * 3, self.H * 1.5), 'Deal with it later'
+        elif isinstance(self.arg, pygame.Surface):
+            self.panoramic_image = self.arg
+
+    def textured_init(self):
+        self.arg = pg_structures.Textures(None, self.arg)
+
+    def imaged_init(self):
+        image = pygame.image.load('Assets/Images/Background/' + self.arg)
+        assert image.get_height() < self.H * 1.5, 'Deal with it later'
+        self.background.blit(image, (0, 0))
+
+    @staticmethod
+    def image_rect(image, vertical_angle):
+        return 0, 0, image.get_width(), image.get_height() + vertical_angle
+
+    def draw(self, screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height):
+        start = 0
+        sign = -1 if self.is_floor else 1
+
+        if self.floor is self:
+            start = self.H // 2
+        if self.type in (structures.BackgroundType.image, structures.BackgroundType.solid):
+            rect = screen.blit(self.background, (0, start + vertical_angle * self.is_floor), (0, 0, self.W, self.H // 2 + sign * vertical_angle))
+            pygame.draw.rect(screen, (255, 0, 0), rect, 1)
+        elif self.type == structures.BackgroundType.panoramic:
+
+            screen.blit(self.panoramic_image, (0, start + vertical_angle * self.is_floor),
+                        (
+                            (180 / fov) * (looking_direction.angle()) / 360 * (self.background.get_width()
+                                                                               * 2 / 3) % (self.background.get_width() * 2 / 3),
+                            self.H - vertical_angle, self.W, self.H // 2 + vertical_angle))
+
+        elif self.type == structures.BackgroundType.textured:
+            other = self.floor if self.floor is not self else self.ceiling
+            if other.type == structures.BackgroundType.textured:
+                if self.is_floor:
+                    return  # if both are textured only one casting is required
+                else:  # cast both
+                    background = self.get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen,
+                                                        other.arg.array, self.arg.array, other.arg.palette, height, vertical_angle)
+                    screen.blit(background, (0, 0))
+            else:  # only cast self
+                background = self.get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen,
+                                                    self.arg.array if self.is_floor else None,
+                                                    self.arg.array if not self.is_floor else None,
+                                                    self.arg.palette,
+                                                    height,
+                                                    vertical_angle
+                                                    )
+                screen.blit(background, (0, start + vertical_angle * self.is_floor))
+
+    @staticmethod
+    def get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen, floor_texture,
+                          ceiling_texture, palette, height, vertical_angle):
+
+        dir_ = looking_direction.normalized()
+        camera_plane = dir_.tangent() * camera_plane_length
+        pos = map_.to_local(position)
+
+        buffer = cast_floor_ceiling(*dir_, *camera_plane, screen.get_width(), screen.get_height(), *pos,
+                                    floor_texture if floor_texture is not None else np.zeros((0, 0), np.int64),
+                                    ceiling_texture if ceiling_texture is not None else np.zeros((0, 0), np.int64),
+                                    floor_texture is not None,
+                                    ceiling_texture is not None,
+                                    height,
+                                    int(vertical_angle))
+
+        screen = pygame.surfarray.make_surface(buffer)
+        screen.set_palette(palette)
+
+        return screen
+
+    @classmethod
+    def draw_background(cls, screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height):
+        cls.floor.draw(screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height)
+        cls.ceiling.draw(screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height)
+
+
 class Render3D:
     def __init__(self, player, map_, screen):
         self.W, self.H = screen.get_size()
         self.player: Player3D = player
         self.map: Map = map_
         self.fov = 66
+        self.fov = 60
         self.camera_plane_length = structures.DegTrigo.tan(self.fov / 2)
         self.resolution = 3
         self.screen = screen
-        self.texture = pygame.image.load('wood_wall.png').convert()
-        # self.texture = pygame.transform.smoothscale(self.texture, (self.texture.get_width(), self.texture.get_height()))
 
-        background = pygame.Surface((screen.get_width(), screen.get_height() * 3))
-        background.fill(pygame.Color('black'))
+        self.texture = pygame.image.load('Assets/Images/Textures/brick2.png').convert()
 
-        floor_colour = (50, 50, 50)
-        ceiling_colour = (135, 206, 235)
+
+        ceiling_colour = (50, 50, 50)
+        floor_colour = (80, 80, 80)
         # floor_colour = (16 * 3, 8 * 3, 0)
         # floor_colour = (122 / 4, 18 / 4, 11 / 4)
 
-        pygame.draw.rect(background, ceiling_colour, (0, 0, self.W, self.H * 1.5))
-        pygame.draw.rect(background, floor_colour, (0, self.H * 1.5, self.W, self.H * 1.5))
-
-        self.background = background.convert()
-
-        self.background = pygame.image.load('bgr edited.png').convert()
-        ratio = screen.get_width() / (self.background.get_width() / 3)
-        # ratio = 6
+        # self.background = background.convert()
+        self.floor_image = pygame.image.load('Assets/Images/Textures/wood2.png')
+        self.floor_texture = pygame.surfarray.array2d(
+            self.floor_image
+        )
+        self.ceiling_texture = pygame.surfarray.array2d(
+            pygame.image.load('Assets/Images/Textures/bluestone.png')
+        )
+        # print(self.floor_texture)
+        # pygame.image.save(pygame.surfarray.make_surface(self.floor_texture * 2), 'floor.png')
+        bg = pygame.image.load('Assets/Images/Background/bgr edited.png').convert()
+        # ratio = screen.get_width() / (self.background.get_width() / 3)
+        ratio = 6
         # ratio *=
-        self.background = pygame.transform.smoothscale(self.background,
-                                                       (int(self.background.get_width() * ratio * 180 / 66),
-                                                        int(self.background.get_height() * ratio)))
-        pygame.draw.rect(self.background, floor_colour, (0, self.background.get_height() / 2, self.background.get_width(),
-                                                         self.background.get_height() / 2))
+        bg = pygame.transform.smoothscale(bg,
+                                          (int(bg.get_width() * ratio),
+                                           int(bg.get_height() * ratio)))
+
+        # print(bg.get_size())
+        Background.set_background(
+            structures.BackgroundType.solid,
+            structures.BackgroundType.textured,
+            floor_colour,
+            'wood2.png',
+            *self.screen.get_size()
+        )
+        # pygame.draw.rect(self.background, floor_colour,
+        #                  (0, self.background.get_height() / 2, self.background.get_width(),
+        #                   self.background.get_height() / 2))
+        # print(self.background.get_size(), ratio)
+        # self.background = self.background.convert()
+
+    def solid_background(self):
+        pass
+
+    def panoramic_background(self):
+        pass
+
+
+        # self.background = pygame.image.load('bgr edited.png').convert()
+        # ratio = screen.get_width() / (self.background.get_width() / 3)
+        # # ratio = 6
+        # # ratio *=
+        # self.background = pygame.transform.smoothscale(self.background,
+        #                                                (int(self.background.get_width() * ratio),
+        #                                                 int(self.background.get_height() * ratio)))
+        # pygame.draw.rect(self.background, floor_colour,
+        #                  (0, self.background.get_height() / 2, self.background.get_width(),
+        #                   self.background.get_height() / 2))
         # print(self.background.get_size(), ratio)
         # self.background = background.convert()
+
 
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
         camera_plane = dir_.tangent() * self.camera_plane_length
 
-        t = Thread(target=self.cast_and_draw, args=(dir_, camera_plane))
-        t.start()
-        t.join()
+        # self.draw_floor(dir_, camera_plane)
+        self.cast_and_draw(dir_, camera_plane)
+        # t1.start()
+        # t.join()
+        # t1.join()
+
+        # self.screen.blit(t.value, (0, 0))
+        # self.screen.blit(t1.value, (0, 0))
+
+    def draw_floor(self, dir_, camera_plane):
+        pos = self.map.to_local(self.player.position)
+        buffer = cast_floor_ceiling(*dir_, *camera_plane, *self.screen.get_size(), *pos, self.floor_texture, self.ceiling_texture)
+        screen = pygame.surfarray.make_surface(buffer)
+        # screen = pygame.transform.scale(screen, self.screen.get_size())
+        screen.set_palette(self.floor_image.get_palette())
+        screen.set_alpha(None)
+        # return screen
+        self.screen.blit(screen, (0, self.screen.get_height() // 2), (0, self.screen.get_height() // 2, self.screen.get_width(), self.screen.get_height()))
 
     def cast_and_draw(self, dir_, camera_plane):
         pos = self.map.to_local(self.player.position)
-        W, H = self.W, self.H
         resolution = self.resolution
-        map_ = self.map
+        # screen = pygame.Surface(self.screen.get_size())
         screen = self.screen
+        screen.set_colorkey(pygame.Color('black'))
+
         texture = self.texture
-        texHeight = texture.get_height()
-        texWidth = texture.get_width()
+        tex_height = self.texture.get_height()
+        for x, colStart, colHeight, yStart, yHeight, color, texX in \
+                cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x, dir_.y,
+                            camera_plane.y, self.H, self.player.vertical_angle, self.player.height,
+                            self.texture.get_width(), tex_height):
+            # if 3:
+            # pygame.draw.rect(screen, (color, color, color), (x, yStart, resolution, yHeight))
+            if colHeight > 0 and colStart < tex_height:
+                column = texture.subsurface((texX, colStart, 1, colHeight)).copy()
+                column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
+                column = pygame.transform.scale(column, (resolution, yHeight))
+                screen.blit(column, (x, yStart))
 
-        dirX = dir_.x
-        dirY = dir_.y
-        posX = pos[0]
-        posY = pos[1]
-        cameraX = camera_plane.x
-        cameraY = camera_plane.y
-        for x, drawStart, lineHeight, color, texX in \
-                cast_screen(W, resolution, map_.map(), posX, posY, dirX, cameraX, dirY, cameraY, H,
-                            self.player.vertical_angle, self.player.height, texWidth):
-            # pygame.draw.rect(screen, (color, color, color), (x, start, resolution, height))
-
-            drawEnd = drawStart + lineHeight
-
-            yStart = max(0, drawStart)
-            yStop = min(H, drawEnd)
-            pixelsPerTexel = lineHeight / texHeight
-            colStart = int((yStart - drawStart) / pixelsPerTexel + .5)
-            colHeight = int((yStop - yStart) / pixelsPerTexel + .5)
-
-            yStart = int(colStart * pixelsPerTexel + drawStart + .5)
-            yHeight = int(colHeight * pixelsPerTexel + .5)
-
-            column = texture.subsurface((texX, colStart, 1, colHeight)).copy()
-            column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
-            column = pygame.transform.scale(column, (resolution, yHeight))
-            screen.blit(column, (x, yStart))
+        return screen
 
     def render_background(self):
-        self.screen.blit(self.background, (0, 0),
-                         ((self.player.looking_direction.angle()) / 360 * (self.background.get_width()
-                                                                           * 2 / 3),
-                          self.H - self.player.vertical_angle, self.W, self.H))
         # self.screen.blit(self.background, (0, 0),
-        #                  (self.player.looking_direction.angle() / 360 * self.background.get_width(), 0, self.W, self.H))
+        #                  (
+        #                     (180 / self.fov) * (self.player.looking_direction.angle()) / 360 * (self.background.get_width()
+        #                                                                                      * 2 / 3) % (self.background.get_width() * 2 / 3),
+        #                  self.H - self.player.vertical_angle, self.W, self.H))
+        Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.vertical_angle,
+                                   self.map, self.camera_plane_length, self.player.position, self.player.height)
+        # self.screen.blit(self.background, (0, 0),
+        #                  (0, self.H - self.player.vertical_angle, self.W, self.H))
         # print(self.player.looking_direction.angle())
         # self.screen.blit(self.background, (0, 0))
 
@@ -240,7 +404,9 @@ class Render3D:
 def main():
     pygame.init()
     # screen = pg_structures.DisplayMods.Windowed((800, 800))
-    screen = pg_structures.DisplayMods.FullScreenAccelerated()
+    real_screen = pg_structures.DisplayMods.FullScreenAccelerated()
+    resolution = 1
+    screen = pygame.Surface((real_screen.get_width() // resolution, real_screen.get_height() // resolution)).convert()
     screen.set_alpha(None)
     pygame.mouse.set_visible(False)
 
@@ -253,18 +419,21 @@ def main():
     color = pygame.Color('white')
 
     player = Player3D(100, 100)
-    map_ = Map.from_file('map2.txt')
+    map_ = Map.from_file('Assets/Maps/map2.txt')
     renderer = Render3D(player, map_, screen)
     fps = 0
     frames = 0
 
     FPS = 1000
+    elapsed = elapsed_real = 1 / FPS
+
     average_frame = 1000 / FPS
     pygame.mouse.set_pos(pg_structures.DisplayMods.current_width / 2, pg_structures.DisplayMods.current_height / 2)
 
+    elaspeds = []
+
     while running:
         renderer.render_background()
-
         events = pygame.event.get()
         for event in events:
             if event.type == pygame.WINDOWEVENT:
@@ -280,9 +449,6 @@ def main():
 
         keys = pygame.key.get_pressed()
 
-        elapsed_real = clock.tick(FPS)
-        elapsed = min(elapsed_real / 1000.0, 1 / 30)
-
         renderer.render_rays()
 
         player.update(elapsed, keys)
@@ -291,17 +457,24 @@ def main():
         fps += fps_now
         frames += 1
 
+        elaspeds.append(elapsed)
+
         average_frame *= 0.9
         average_frame += 0.1 * elapsed_real
 
         fps_sur = font.render(str(round(1000 / average_frame)), False, color)
         screen.blit(fps_sur, (0, 0))
-        tilt_sur = font.render(str(renderer.player.speed), False, pygame.Color('white'))
+        tilt_sur = font.render(str(renderer.player.with_), False, pygame.Color('white'))
         screen.blit(tilt_sur, (0, 40))
 
-        pygame.display.flip()
-    print(fps / frames)
+        elapsed_real = clock.tick(FPS)
+        elapsed = elapsed_real / 1000 # min(elapsed_real / 1000.0, 1 / 30)
 
+        new = screen
+        new = pygame.transform.scale(screen, real_screen.get_size(), real_screen)
+        pygame.display.flip()
+
+    print(fps / frames)
 
 if __name__ == '__main__':
     import cProfile

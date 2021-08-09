@@ -1,6 +1,7 @@
 import pygame as pg
 import numpy as np
 from win32api import GetSystemMetrics
+from typing import Union
 
 
 def screen_maker(func):
@@ -77,3 +78,30 @@ def draw_line_dashed(surface, color, start_pos, end_pos, width=1, dash_length=10
 
     return [pg.draw.line(surface, color, tuple(dash_knots[n]), tuple(dash_knots[n + 1]), width)
             for n in range(int(exclude_corners), dash_amount - int(exclude_corners), 3)]
+
+
+class Textures:
+    textures_num = 10
+    __textures = [None] * textures_num
+
+    def __init__(self, id_: Union[int, type(None)], filename: str):
+        if not filename.endswith('.png'):
+            filename += '.png'
+
+        if id_ is not None:  # ceiling or floor texture
+            if not self.textures_num > id_ > 0:
+                raise ValueError(f'id is not between 0 and {self.textures_num}')
+            if self.__textures[id_] is not None:
+                raise ValueError('id already taken')
+
+            Textures.__textures[id_] = self
+
+        self.texture = pg.image.load('Assets/Images/Textures/' + filename)# .convert()
+        self.array = pg.surfarray.array2d(self.texture)
+        try:
+            self.palette = self.texture.get_palette()
+        except pg.error:
+            print(filename, 'has no palette')
+            self.palette = None
+        self.id = id_
+

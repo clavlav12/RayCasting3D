@@ -74,17 +74,16 @@ class Map(structures.Singleton):
         return cast_ray(self.__map, startX, startY, directionX, directionY)
 
 
-@njit(nogil=True)
-def cast_ray(array: np.array, startX, startY, directionX, directionY, texWidth):
+@njit(nogil=True, fastmath=True)
+def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
     """
     Cast a ray from start_pos in the direction of the unit vector direction
     and returns it's length
     """
-
     height, width = array.shape
 
-    stepX = abs(1 / directionX) if directionX != 0 else np.Inf
-    stepY = abs(1 / directionY) if directionY != 0 else np.Inf
+    step_x = abs(1 / direction_x) if direction_x != 0 else np.Inf
+    step_y = abs(1 / direction_y) if direction_y != 0 else np.Inf
 
     # optimisation from:
     # step_size = structures.Vector2.Cartesian(
@@ -92,121 +91,194 @@ def cast_ray(array: np.array, startX, startY, directionX, directionY, texWidth):
     #     hypot(1, direction.x / direction.y) if direction.y != 0 else float('inf')
     # )
 
-    mapX = int(startX)
-    mapY = int(startY)
+    map_x = int(start_x)
+    map_y = int(start_y)
 
-    rayLengthX = 0
-    rayLengthY = 0
+    ray_length_x = 0
+    ray_length_y = 0
 
-    if directionX > 0:  # To the right
-        rayLengthX += (1 - (startX - mapX)) * stepX
-        stepDirX = 1
+    if direction_x > 0:  # To the right
+        ray_length_x += (1 - (start_x - map_x)) * step_x
+        step_dir_x = 1
     else:  # To the left
-        rayLengthX += (startX - mapX) * stepX
-        stepDirX = -1
+        ray_length_x += (start_x - map_x) * step_x
+        step_dir_x = -1
 
-    if directionY > 0:  # To the right
-        rayLengthY += (1 - (startY - mapY)) * stepY
-        stepDirY = 1
+    if direction_y > 0:  # To the right
+        ray_length_y += (1 - (start_y - map_y)) * step_y
+        step_dir_y = 1
     else:  # To the left
-        rayLengthY += (startY - mapY) * stepY
-        stepDirY = -1
+        ray_length_y += (start_y - map_y) * step_y
+        step_dir_y = -1
 
     tile_found = False
     while not tile_found:
-        if rayLengthX < rayLengthY:
-            mapX += stepDirX
-            rayLengthX += stepX
-            side = False
-        else:
-            mapY += stepDirY
-            rayLengthY += stepY
+        if ray_length_x < ray_length_y:
+            map_x += step_dir_x
+            ray_length_x += step_x
             side = True
-        if 0 <= mapX < width and 0 <= mapY < height:
-            if array[mapY, mapX] != 0:
+        else:
+            map_y += step_dir_y
+            ray_length_y += step_y
+            side = False
+        if 0 <= map_x < width and 0 <= map_y < height:
+            if array[map_y, map_x] != 0:
                 tile_found = True
         else:
             break
 
-    if not side:  # stepX = step_dir.x -> rayDirX = direction.x
-        wall_distance = (mapX - startX + (1 - stepDirX) / 2) / directionX
+    if side:  # stepX = step_dir.x -> rayDirX = direction.x
+        wall_distance = (map_x - start_x + (1 - step_dir_x) / 2) / direction_x
     else:
-        wall_distance = (mapY - startY + (1 - stepDirY) / 2) / directionY
+        wall_distance = (map_y - start_y + (1 - step_dir_y) / 2) / direction_y
 
     # intersection = start_pos + direction * distance
     #
 
-    if not side:
-        wallX = startY + wall_distance * directionY
+    if side:
+        wallX = start_y + wall_distance * direction_y
     else:
-        wallX = startX + wall_distance * directionX
-    wallX = abs((wallX - int(wallX)) - 1)
+        wallX = start_x + wall_distance * direction_x
+    # wallX2 = abs((wallX - int(wallX)) - 1) -> reverses the texture
+    wallX -= int(wallX)
 
-    texX = int(wallX * texWidth)
-    if side == 0 and directionX > 0: texX = texWidth - texX - 1
-    if side == 1 and directionY < 0: texX = texWidth - texX - 1
+    texX = int(wallX * tex_width)
+
+    if side and direction_x > 0:
+        texX = tex_width - texX - 1
+    if (not side) and direction_y < 0:
+        texX = tex_width - texX - 1
 
     return wall_distance, side, texX
 
 
 @njit(nogil=True)
-def cast_screen(W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, height, texWidth,
-                walls_ratio=1):
+def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, camera_y, H, tilt, height, tex_width,
+                tex_height, walls_ratio=1):
     """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
     inv_height = 2 - height
     for x in range(0, W, resolution):
         pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
-        length, side, texX = cast_ray(array, posX, posY, dirX + cameraX * pixel_camera_pos,
-                                      dirY + cameraY * pixel_camera_pos, texWidth)
+        length, side, texX = cast_ray(array, pos_x, pos_y, dir_x + camera_x * pixel_camera_pos,
+                                      dir_y + camera_y * pixel_camera_pos, tex_width)
 
-        line_height = walls_ratio * H / length #if length != 0 \
-           # else H  # Multiply by a greater than one value to make walls higher
+        line_height = walls_ratio * H / length
 
         draw_start = - inv_height * line_height / 2 + H / 2 + tilt
-        # if draw_start < 0:
-        #     line_height += draw_start
-        #     draw_start = 0
 
-        c = max(1, int((255.0 - length * 27.2) * (1 - side * .25)))
+        c = max(1, int((255.0 - length * 20) * (1 - side * 0.25)))  # length coefficient
+        # measures how distance affect brightness. Side coefficient measures how sunlight affects the brightness (.25)
+        # seems to be the right choice
 
-        yield x, draw_start, line_height, c, texX
+        draw_end = draw_start + line_height
+
+        y_start = max(-tex_height, draw_start)
+        y_stop = min(H + tex_height, draw_end)
+        pixels_per_texel = line_height / tex_height
+        col_start = int((y_start - draw_start) / pixels_per_texel + .5)
+        col_height = int((y_stop - y_start) / pixels_per_texel + .5)
+
+        y_start = int(col_start * pixels_per_texel + draw_start + .5)
+        y_height = int(col_height * pixels_per_texel + .5)
+
+        yield x, col_start, col_height, y_start, y_height, c, texX
 
 
 @njit(nogil=True)
-def cast_screen_partly(start, end, W, resolution, array, posX, posY, dirX, cameraX, dirY, cameraY, H, tilt, height,
-                       walls_ratio=.5):
-    """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
-    inv_height = 2 - height
-    for x in range(start, end, resolution):
-        pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
-        length, side = cast_ray(array, posX, posY, dirX + cameraX * pixel_camera_pos,
-                                dirY + cameraY * pixel_camera_pos)
+def cast_floor_ceiling(dir_x, dir_y, camera_x, camera_y, W, H, pos_x, pos_y, floor_texture, ceiling_texture,
+                       floor, ceiling, h, vertical_angle):
+    # H = H // 4
+    # W = W // 4
+    is_floor = not (0, 0) == floor_texture.shape
+    is_ceiling = not (0, 0) == ceiling_texture.shape
+    if is_floor and not is_ceiling:
+        text_width, text_height = floor_texture.shape
+    elif is_ceiling and not is_floor:
+        text_width, text_height = ceiling_texture.shape
+    elif floor_texture.shape == ceiling_texture.shape:
+        text_width, text_height = ceiling_texture.shape
+    else:
+        raise ValueError('Texture sizes do not match')
 
-        line_height = walls_ratio * H / length if length != 0 \
-            else H  # Multiply by a greater than one value to make walls higher
+    # negative vertical_angle means down!
+    if is_floor and not is_ceiling:
+        vertical_angle = - vertical_angle  # needs to draw more when looking down and less if looking down
+    elif is_ceiling and not is_floor:
+        h = 2 - h
+    height = (floor + ceiling) * H // 2
+    buffer = np.zeros((W, max(height + vertical_angle, 0)), np.int8)
+    for y in range(H // 2 + 1, H + vertical_angle):
+        # rayDir for leftmost ray (x = 0) and rightmost ray (x = w)
+        ray_dir_x0 = dir_x - camera_x
+        ray_dir_y0 = dir_y - camera_y
+        ray_dir_x1 = dir_x + camera_x
+        ray_dir_y1 = dir_y + camera_y
 
-        draw_start = - inv_height * line_height / 2 + H / 2 + tilt
-        if draw_start < 0:
-            line_height += draw_start
-            draw_start = 0
+        # Current y position compared to the center of the screen (the horizon)
+        p = y - H // 2
 
-        c = max(1, int((255.0 - length * 27.2) * (1 - side * .25)))
-        yield x, draw_start, line_height, c
+        # Vertical position of the camera.
+        pos_z = H * h / 2
+
+        # Horizontal distance from the camera to the floor for the current row.
+        # 0.5 is the z position exactly in the middle between floor and ceiling.
+        row_distance = pos_z / p
+
+        # calculate the real world step vector we have to add for each x (parallel to camera plane)
+        # adding step by step avoids multiplications with a weight in the inner loop
+        floor_step_x = row_distance * (ray_dir_x1 - ray_dir_x0) / W
+        floor_step_y = row_distance * (ray_dir_y1 - ray_dir_y0) / W
+
+        # real world coordinates of the leftmost column. This will be updated as we step to the right.
+        floor_x = pos_x + row_distance * ray_dir_x0
+        floor_y = pos_y + row_distance * ray_dir_y0
+
+        for x in range(W):
+            cell_x = int(floor_x)
+            cell_y = int(floor_y)
+
+            tx = int(text_width * (floor_x - cell_x)) & (text_width - 1)
+            ty = int(text_height * (floor_y - cell_y)) & (text_height - 1)
+
+            floor_x += floor_step_x
+            floor_y += floor_step_y
+
+            # print('before:', format(color, '032b'))
+            # color <<= 1
+            # print('after:', format(color, '032b'))
+            # color = (color >> 1) & 8355711
+            # print(row_distance)
+            if floor:
+                color = floor_texture[tx, ty]
+                buffer[x, y - height] = color
+            if ceiling:
+                color = ceiling_texture[tx, ty]
+                buffer[x, height - y - 1] = color
+    return buffer
 
 
 if __name__ == '__main__':
-    fast = Map.from_file('map2.txt')
+    import pygame
+    texture = pygame.image.load('Assets/Images/Textures/Blood Wall Dark.png')
 
-    import timeit
-
-    l = '''
-c = cast_screen(1920, 1, fast.map(), 3.10000002, 3.10000002, 0.9297758477079633,
-                 -0.23906392650695832, 0.36812616454000946, 0.6038034954732037, 1080, -156.0, 1.0)
-for i in c:
-    pass
-    '''
-    print(1, timeit.timeit(l,
-                           number=1000,
-                           globals=globals(),
-                           setup=l
-                           ))
+    arr = pygame.surfarray.array2d(texture)
+    buffer = cast_floor_ceiling(0.91632, 0.40044, -0.23119, 0.52904, 1920, 1080, 3.10000002, 3.10000002, arr)
+    
+    image = pygame.surfarray.make_surface(buffer)
+    
+    pygame.image.save(image, 'floor.png')
+#     fast = Map.from_file('map2.txt')
+#
+#     import timeit
+#
+#     l = '''
+# c = cast_screen(1920, 1, fast.map(), 3.10000002, 3.10000002, 0.9297758477079633,
+#                  -0.23906392650695832, 0.36812616454000946, 0.6038034954732037, 1080, -156.0, 1.0)
+# for i in c:
+#     pass
+#     '''
+#     print(1, timeit.timeit(l,
+#                            number=1000,
+#                            globals=globals(),
+#                            setup=l
+#                            ))

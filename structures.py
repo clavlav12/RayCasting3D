@@ -1,5 +1,20 @@
-from enum import Enum
+from enum import Enum, auto
+from threading import Thread
 import math
+
+
+class ValueThread(Thread):
+    def __init__(self, target, args=(), kwargs=None):
+        super(ValueThread, self).__init__()
+        if kwargs is None:
+            kwargs = {}
+        self.target = target
+        self.kwargs = kwargs
+        self.args = args
+        self.value = None
+
+    def run(self):
+        self.value = self.target(*self.args, **self.kwargs)
 
 
 def sign(x):
@@ -53,6 +68,12 @@ class VectorType(Enum):
     cartesian = 1
     polar = 2
 
+
+class BackgroundType(Enum):
+    panoramic = auto()
+    solid = auto()
+    image = auto()
+    textured = auto()
 
 class DegTrigo:
 
