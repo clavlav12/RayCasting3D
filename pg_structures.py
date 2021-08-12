@@ -1,3 +1,6 @@
+from collections import namedtuple
+from glob import glob
+from time import time
 import pygame as pg
 import numpy as np
 from win32api import GetSystemMetrics
@@ -6,12 +9,14 @@ from typing import Union
 
 def screen_maker(func):
     """Decorator - creates a screen, then updates class's properties"""
+
     def inner(*args, **kwargs):
         val = func(DisplayMods, *args, **kwargs)
         size = val.get_size()
         DisplayMods.current_width, DisplayMods.current_height = size
         DisplayMods.current_resolution = size
         return val
+
     return inner
 
 
@@ -96,7 +101,7 @@ class Textures:
 
             Textures.__textures[id_] = self
 
-        self.texture = pg.image.load('Assets/Images/Textures/' + filename)# .convert()
+        self.texture = pg.image.load('Assets/Images/Textures/' + filename)  # .convert()
         self.array = pg.surfarray.array2d(self.texture)
         try:
             self.palette = self.texture.get_palette()
@@ -105,3 +110,129 @@ class Textures:
             self.palette = None
         self.id = id_
 
+
+class Timer:
+    """Used to time stuff eg. jump, fire etc."""
+
+    def __init__(self, delay, active=False):
+        self.delay = delay
+        self.base_delay = delay
+        self._is_counting = False
+        self.start_time = -1
+        if active:
+            self.activate()
+
+    @property
+    def is_counting(self):
+        if self.finished() and self._is_counting:
+            self._is_counting = False
+        return self._is_counting
+
+    def reset(self):
+        """Reset the clock"""
+        self.start_time = time()
+
+    def activate(self, new_time=None):
+        """Activates the clock"""
+        if new_time:
+            self.delay = new_time
+        else:
+            self.delay = self.base_delay
+        self.start_time = time()
+        self._is_counting = True
+
+    def __bool__(self):
+        return self.time_to_finish() < 0
+
+    def finished(self):
+        """Returns true if the timer is done"""
+        return bool(self)
+
+    def time_to_finish(self):
+        return self.delay - (time() - self.start_time)
+
+class Animation:
+    """Collection class to make animations easier"""
+    _key = object()
+    Frame = namedtuple('Frame', ('image', 'delay'))
+
+    def __init__(self, dir_regex, fps, repeat, flip_x=False, flip_y=False, scale=1):
+        """
+        Generates an Animation object from a directory
+        :param dir_regex:  directory path regex (string)
+        :param fps: images per second (int)
+        :param repeat: after finished to show all images, whether reset pointer or not (bool)
+        :param flip_x: should the image be flipped horizontally (bool)
+        :param flip_y: should the image be flipped vertically (bool)
+        :param scale: how much to scale the image (int)
+        :return: Animation object (Animation)
+        """
+
+        self.images_list = [
+            self.Frame(pg.transform.flip(pg.image.load(i), flip_x, flip_y).convert(), self.get_delay(i)) for i in glob(dir_regex)
+        ]
+
+        if scale != 1:
+            self.images_list = [
+                self.Frame(pg.transform.scale(i.image, (int(i.image.get_width() * scale),
+                                                        int(i.image.get_height() * scale))).convert(), i.delay) for i in
+                self.images_list]
+
+        assert bool(self.images_list), "image list is empty"
+        self.pointer = 0
+        self.frames_per_second = fps
+        self.timer = Timer(self.images_list[self.pointer].delay)
+        self.repeat = repeat
+
+    def get_image(self, update_pointer=True):
+        """Next image in the animation list"""
+        # 4 4 4 4 4 0
+        if update_pointer and not self.finished():
+            if self.timer.finished():
+                self.update_pointer()
+                self.timer.activate(self.images_list[self.pointer].delay)
+
+        return self.images_list[self.pointer].image  # ??
+
+    def update_pointer(self):
+        """
+        Updates the pointer. If it's too big stay on the last frame
+        Returns weather or not the animation is over
+        """
+        self.pointer = 1 + self.pointer % len(self.images_list)
+        if self.pointer >= len(self.images_list):  # ??
+            if self.repeat:
+                self.pointer = 0
+            else:
+                self.pointer -= 1
+            return True
+        return False
+
+    def reset(self):
+        """Takes the pointer back to the beginning"""
+        self.pointer = 0
+        self.timer.activate(self.images_list[self.pointer].delay)
+
+    def finished(self):
+        """Returns true if the animation is done and not set to repeat"""
+        return (not self.repeat) and self.pointer == len(self.images_list) - 1 and self.timer.finished() # ??
+
+    def __next__(self):
+        return self.get_image()
+
+    def get_next_size(self):
+        """Returns the size of the next image"""
+        return self.images_list[self.pointer].image.get_size()
+
+    def __len__(self):
+        return len(self.images_list)
+
+    def set_pointer(self, new):
+        self.pointer = new
+
+    @staticmethod
+    def get_delay(path):
+        path = '.'.join(path.split('.')[:-1])
+        path = path.split('-')[-1]
+        path = path.replace('s', '')
+        return float(path)

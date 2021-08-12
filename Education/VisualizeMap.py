@@ -8,7 +8,7 @@ import Player
 class MapDrawer:
     def __init__(self, screen):
         self.screen = screen
-        self.map = Map.Map.from_file('map2.txt')
+        self.map = Map.Map.from_file('../Assets/Maps/map2.txt')
 
     def get_background(self):
         bg = pygame.Surface(self.map.to_global(self.map.get_size())).convert()
@@ -51,29 +51,11 @@ class PointPlayer(Player.Player):
         dir_ = dir_.normalized()
         matrix = structures.RotationMatrix(1 / res * fov)
         for i in range(res):
-            length, intersection = map_.cast_ray(*map_.to_local(self.position), *dir_)
+            length, *_ = map_.cast_ray(*map_.to_local(self.position), *dir_)
             length = map_.to_global(length)
-            intersection = map_.to_global(intersection)
             pygame.draw.line(screen, (255, 255, 0), self.position.to_pos(),
                              (self.position + dir_ * (length)).to_pos(), 3)
             dir_ *= matrix
-
-    def draw_ray_camera(self, map_, screen):
-        self.fov = 66
-        self.camera_plane_length = structures.DegTrigo.tan(self.fov / 2)
-        W = 100
-        dir_ = (structures.Vector2.Point(pygame.mouse.get_pos()) - self.position).normalized()
-        for x in range(W):
-            camera_plane = dir_.tangent() * self.camera_plane_length
-            pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
-            ray_direction = dir_ + camera_plane * pixel_camera_pos
-            length, intersection, _ = map_.cast_ray(self.position, ray_direction, camera_plane)
-            length = map_.to_global(length)
-            intersection = map_.to_global(intersection)
-            pygame.draw.line(screen, (255, 0, 0), intersection.to_pos(),
-                             (intersection - dir_.normalized() * length).to_pos(), 3)
-
-            pygame.draw.circle(screen, pygame.Color('blue'), tuple(intersection), 5, 1)
 
     def draw(self, screen, map_):
         pos = self.position.to_pos()
@@ -103,10 +85,7 @@ def main():
 
         events = pygame.event.get()
         for event in events:
-            if event.type == pygame.WINDOWEVENT:
-                clock.tick()
-                continue
-            elif event.type == pygame.QUIT:
+            if event.type == pygame.QUIT:
                 running = 0
 
         keys = pygame.key.get_pressed()

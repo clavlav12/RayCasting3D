@@ -1,6 +1,7 @@
 import structures
 import pygame
 import FasterMap as Map
+import pg_structures
 
 dx = 0.000001
 
@@ -55,7 +56,6 @@ class Player:
                 self.position.y = self.distance_from_wall / 2 + platform.bottom + dx
         return platform
 
-
     def platform_rect_check(self) -> pygame.Rect:
         hw = structures.Vector2(self.distance_from_wall / 2, 0)
         hh = structures.Vector2(0, self.distance_from_wall / 2)
@@ -79,7 +79,8 @@ class Player:
         if self.moving_direction:
             self.moving_direction = self.moving_direction.normalized()
         self.moving_direction += structures.Vector2(x or 0, y or 0)
-        self.moving_direction = self.moving_direction.normalized()
+        if self.moving_direction:
+            self.moving_direction = self.moving_direction.normalized()
 
     def setup_movement(self):
         self.up_down_left_right_movements()
@@ -89,3 +90,38 @@ class Player:
         self.key_to_function[pygame.K_DOWN] = lambda: self.set_moving_direction(y=1)
         self.key_to_function[pygame.K_LEFT] = lambda: self.set_moving_direction(x=-1)
         self.key_to_function[pygame.K_RIGHT] = lambda: self.set_moving_direction(x=1)
+
+
+class Weapon:
+
+    def __init__(self, animation_directory, fps, fire_rate, screen):
+        self.animation = pg_structures.Animation(animation_directory + '/*.gif', fps, False, scale=3)
+        self.animation.set_pointer(-1)
+        self.shooting = False
+
+        self.wait_to_finish = fire_rate == -1
+
+        if self.wait_to_finish:
+            fire_rate = float('inf')
+        self.fire_timer = pg_structures.Timer(1 / fire_rate)
+
+        rect = self.animation.get_image(False).get_rect()
+        rect.center = screen.get_rect().center
+        rect.bottom = screen.get_rect().bottom
+        self.rect = rect
+        self.screen = screen
+
+    def shoot(self):
+        if self.fire_timer.finished() and ((not self.wait_to_finish) or self.animation.finished()):
+            self.shooting = True
+            self.animation.reset()
+            self.fire_timer.activate()
+        else:
+            self.shoot_next = True
+
+    def draw(self):
+        next_image = self.animation.get_image()
+        if self.animation.finished():
+            self.shooting = False
+
+        self.screen.blit(next_image, self.rect)

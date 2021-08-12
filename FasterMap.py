@@ -71,7 +71,7 @@ class Map(structures.Singleton):
         return self.__map.T
 
     def cast_ray(self, startX, startY, directionX, directionY):
-        return cast_ray(self.__map, startX, startY, directionX, directionY)
+        return cast_ray(self.__map, startX, startY, directionX, directionY, 1)
 
 
 @njit(nogil=True, fastmath=True)
@@ -132,8 +132,8 @@ def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
     else:
         wall_distance = (map_y - start_y + (1 - step_dir_y) / 2) / direction_y
 
-    # intersection = start_pos + direction * distance
-    #
+    # intersection_x = start_x + direction_x * wall_distance
+    # intersection_y = start_y + direction_y * wall_distance
 
     if side:
         wallX = start_y + wall_distance * direction_y
@@ -149,7 +149,7 @@ def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
     if (not side) and direction_y < 0:
         texX = tex_width - texX - 1
 
-    return wall_distance, side, texX
+    return wall_distance, side, texX,
 
 
 @njit(nogil=True)

@@ -1,4 +1,4 @@
-from Player import Player
+from Player import Player, Weapon
 import pygame
 from FasterMap import Map, cast_screen, cast_floor_ceiling
 import structures
@@ -10,7 +10,7 @@ from threading import Thread
 class Player3D(Player):
 
     def __init__(self, x: int = 0, y: int = 0):
-        self.fov = 60
+        self.fov = 90
         self.regular_speed = 50
         self.crouching_speed = self.regular_speed / 2
         self.running_speed = self.regular_speed * 2
@@ -176,7 +176,6 @@ class Background:
         self.is_floor = is_floor
 
         self.background = pygame.Surface((self.W * 3, self.H * 1.5)).convert()
-        self.background.set_alpha(None)
 
         {
             structures.BackgroundType.solid: self.solid_init,
@@ -292,79 +291,30 @@ class Render3D:
         self.resolution = 3
         self.screen = screen
 
-        self.texture = pygame.image.load('Assets/Images/Textures/brick2.png').convert()
-
-
         ceiling_colour = (50, 50, 50)
         floor_colour = (80, 80, 80)
-        # floor_colour = (16 * 3, 8 * 3, 0)
-        # floor_colour = (122 / 4, 18 / 4, 11 / 4)
 
-        # self.background = background.convert()
-        self.floor_image = pygame.image.load('Assets/Images/Textures/wood2.png')
-        self.floor_texture = pygame.surfarray.array2d(
-            self.floor_image
-        )
-        self.ceiling_texture = pygame.surfarray.array2d(
-            pygame.image.load('Assets/Images/Textures/bluestone.png')
-        )
-        # print(self.floor_texture)
-        # pygame.image.save(pygame.surfarray.make_surface(self.floor_texture * 2), 'floor.png')
+        self.texture = pygame.image.load('Assets/Images/Textures/brick2.png').convert()
+
         bg = pygame.image.load('Assets/Images/Background/bgr edited.png').convert()
         # ratio = screen.get_width() / (self.background.get_width() / 3)
         ratio = 6
-        # ratio *=
         bg = pygame.transform.smoothscale(bg,
                                           (int(bg.get_width() * ratio),
                                            int(bg.get_height() * ratio)))
 
-        # print(bg.get_size())
         Background.set_background(
+            structures.BackgroundType.panoramic,
             structures.BackgroundType.textured,
-            structures.BackgroundType.textured,
-            'wood2.png',
+            bg,
             'wood2.png',
             *self.screen.get_size()
         )
-        # pygame.draw.rect(self.background, floor_colour,
-        #                  (0, self.background.get_height() / 2, self.background.get_width(),
-        #                   self.background.get_height() / 2))
-        # print(self.background.get_size(), ratio)
-        # self.background = self.background.convert()
-
-    def solid_background(self):
-        pass
-
-    def panoramic_background(self):
-        pass
-
-
-        # self.background = pygame.image.load('bgr edited.png').convert()
-        # ratio = screen.get_width() / (self.background.get_width() / 3)
-        # # ratio = 6
-        # # ratio *=
-        # self.background = pygame.transform.smoothscale(self.background,
-        #                                                (int(self.background.get_width() * ratio),
-        #                                                 int(self.background.get_height() * ratio)))
-        # pygame.draw.rect(self.background, floor_colour,
-        #                  (0, self.background.get_height() / 2, self.background.get_width(),
-        #                   self.background.get_height() / 2))
-        # print(self.background.get_size(), ratio)
-        # self.background = background.convert()
-
 
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
         camera_plane = dir_.tangent() * self.camera_plane_length
-
-        # self.draw_floor(dir_, camera_plane)
         self.cast_and_draw(dir_, camera_plane)
-        # t1.start()
-        # t.join()
-        # t1.join()
-
-        # self.screen.blit(t.value, (0, 0))
-        # self.screen.blit(t1.value, (0, 0))
 
     def draw_floor(self, dir_, camera_plane):
         pos = self.map.to_local(self.player.position)
@@ -372,8 +322,8 @@ class Render3D:
         screen = pygame.surfarray.make_surface(buffer)
         # screen = pygame.transform.scale(screen, self.screen.get_size())
         screen.set_palette(self.floor_image.get_palette())
-        screen.set_alpha(None)
-        # return screen
+        screen.blit(self.shadow_mask, (0, 0), pygame.BLEND_MULT)
+        # screen.set_alpha(None)
         self.screen.blit(screen, (0, self.screen.get_height() // 2), (0, self.screen.get_height() // 2, self.screen.get_width(), self.screen.get_height()))
 
     def cast_and_draw(self, dir_, camera_plane):
@@ -400,26 +350,16 @@ class Render3D:
         return screen
 
     def render_background(self):
-        # self.screen.blit(self.background, (0, 0),
-        #                  (
-        #                     (180 / self.fov) * (self.player.looking_direction.angle()) / 360 * (self.background.get_width()
-        #                                                                                      * 2 / 3) % (self.background.get_width() * 2 / 3),
-        #                  self.H - self.player.vertical_angle, self.W, self.H))
         Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.vertical_angle,
                                    self.map, self.camera_plane_length, self.player.position, self.player.height)
-        # self.screen.blit(self.background, (0, 0),
-        #                  (0, self.H - self.player.vertical_angle, self.W, self.H))
-        # print(self.player.looking_direction.angle())
-        # self.screen.blit(self.background, (0, 0))
-
 
 def main():
     pygame.init()
     # screen = pg_structures.DisplayMods.Windowed((800, 800))
     screen = pg_structures.DisplayMods.FullScreenAccelerated()
-    resolution = 1
+    # resolution = 1
     # screen = pygame.Surface((real_screen.get_width() // resolution, real_screen.get_height() // resolution)).convert()
-    screen.set_alpha(None)
+    # screen.set_alpha(None)
     pygame.mouse.set_visible(False)
 
     W, H = screen.get_size()
@@ -444,20 +384,21 @@ def main():
 
     elaspeds = []
 
+    pistol = Weapon('Assets/Weapons/Pistol', 8, -1, screen)
+
     while running:
         renderer.render_background()
         events = pygame.event.get()
         for event in events:
-            if event.type == pygame.WINDOWEVENT:
-                clock.tick()
-                continue
-            elif event.type == pygame.QUIT:
+            if event.type == pygame.QUIT:
                 running = 0
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:
                     player.with_ = False
                 elif event.button == 5:
                     player.with_ = True
+                elif event.button == 1:
+                    pistol.shoot()
 
         keys = pygame.key.get_pressed()
 
@@ -476,8 +417,11 @@ def main():
 
         fps_sur = font.render(str(round(1000 / average_frame)), False, color)
         screen.blit(fps_sur, (0, 0))
-        tilt_sur = font.render(str(renderer.player.with_), False, pygame.Color('white'))
+        tilt_sur = font.render("{} {} {}".format(pistol.shooting, pistol.fire_timer.finished(),
+                                                 pistol.animation.pointer), False, pygame.Color('white'))
         screen.blit(tilt_sur, (0, 40))
+
+        pistol.draw()
 
         elapsed_real = clock.tick(FPS)
         elapsed = elapsed_real / 1000 # min(elapsed_real / 1000.0, 1 / 30)
