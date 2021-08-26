@@ -1,11 +1,11 @@
 from Player import Player, Weapon
 import pygame
-from FasterMap import Map, cast_screen, cast_floor_ceiling
+import FasterMap
 import structures
 import pg_structures
 import numpy as np
 from threading import Thread
-
+from Sprites3D import BillboardSprite
 
 class Player3D(Player):
 
@@ -67,15 +67,14 @@ class Player3D(Player):
         self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / self.fov * 30, False)
         # self.looking_direction = self.looking_direction * structures.RotationMatrix(90 * dt * self.sensitivity_x, True)
         diffY = pygame.mouse.get_pos()[1] - pg_structures.DisplayMods.current_height / 2
-        self.vertical_angle -= diffY * self.sensitivity_y
+        # self.vertical_angle -= diffY * self.sensitivity_y
         pygame.mouse.set_pos(pg_structures.DisplayMods.current_width / 2, pg_structures.DisplayMods.current_height / 2)
 
         self.ground_height = 1
         if self.speed == self.running_speed:
             self.speed = self.regular_speed
-        super(Player3D, self).update(dt, keys)
 
-    def move(self, dt):
+    def update_kinematics(self, dt):
         if self.height > self.ground_height and not self.jumping:  # Falling
             self.jumping = self.ground_height  # Truthy value and saves the height on time of fall
 
@@ -117,7 +116,7 @@ class Player3D(Player):
             self.vertical_velocity += self.standing_vel
             self.coming_up = False
 
-        super(Player3D, self).move(dt)
+        super(Player3D, self).update_kinematics(dt)
 
     def setup_movement(self):
         self.key_to_function[pygame.K_w] = \
@@ -217,11 +216,16 @@ class Background:
             # pygame.draw.rect(screen, (255, 0, 0), rect, 1)
         elif self.type == structures.BackgroundType.panoramic:
 
+            rect = pygame.Rect(
+                (
+                    (180 / fov) * (looking_direction.angle()) / 360 * (self.background.get_width()
+                                                                       * 2 / 3) % (self.background.get_width() * 2 / 3),
+                    self.H - vertical_angle, self.W, self.H // 2 + vertical_angle)
+            )
+            if not self.is_floor:
+                rect.bottom = self.panoramic_image.get_height()
             screen.blit(self.panoramic_image, (0, start + vertical_angle * self.is_floor),
-                        (
-                            (180 / fov) * (looking_direction.angle()) / 360 * (self.background.get_width()
-                                                                               * 2 / 3) % (self.background.get_width() * 2 / 3),
-                            self.H - vertical_angle, self.W, self.H // 2 + vertical_angle))
+                        rect)
 
         elif self.type == structures.BackgroundType.textured:
             other = self.floor if self.floor is not self else self.ceiling
@@ -250,13 +254,14 @@ class Background:
         camera_plane = dir_.tangent() * camera_plane_length
         pos = map_.to_local(position)
 
-        buffer = cast_floor_ceiling(*dir_, *camera_plane, screen.get_width(), screen.get_height(), *pos,
+        buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, screen.get_width(), screen.get_height(), *pos,
                                     floor_texture if floor_texture is not None else np.zeros((0, 0), np.int64),
                                     ceiling_texture if ceiling_texture is not None else np.zeros((0, 0), np.int64),
                                     floor_texture is not None,
                                     ceiling_texture is not None,
                                     height,
-                                    int(vertical_angle))
+                                    int(vertical_angle),
+                                    )
 
         screen = pygame.surfarray.make_surface(buffer)
         screen.set_palette(palette)
@@ -281,10 +286,14 @@ class Background:
 
 
 class Render3D:
+    instance = None
+
     def __init__(self, player, map_, screen):
+        self.z_buffer = None
+
         self.W, self.H = screen.get_size()
         self.player: Player3D = player
-        self.map: Map = map_
+        self.map: FasterMap.Map = map_
         self.fov = 66
         self.fov = 60
         self.camera_plane_length = structures.DegTrigo.tan(self.fov / 2)
@@ -297,19 +306,33 @@ class Render3D:
         self.texture = pygame.image.load('Assets/Images/Textures/brick2.png').convert()
 
         bg = pygame.image.load('Assets/Images/Background/bgr edited.png').convert()
-        # ratio = screen.get_width() / (self.background.get_width() / 3)
-        ratio = 6
+        ratio = screen.get_width() / (bg.get_width() / 3)
+
         bg = pygame.transform.smoothscale(bg,
                                           (int(bg.get_width() * ratio),
                                            int(bg.get_height() * ratio)))
 
+        bg = bg.subsurface((0, 0, bg.get_width(), bg.get_height() // 2)).convert()
+        # Background.set_background(
+        #     structures.BackgroundType.panoramic,
+        #     structures.BackgroundType.textured,
+        #     bg,
+        #     'wood2.png',
+        #     *self.screen.get_size()
+        # )
         Background.set_background(
-            structures.BackgroundType.panoramic,
             structures.BackgroundType.textured,
-            bg,
+            structures.BackgroundType.textured,
+            'wood2.png',
             'wood2.png',
             *self.screen.get_size()
         )
+        Render3D.instance = self
+
+        texture = pygame.image.load(r'Assets\Images\Sprites\barrel.png  ').convert()
+        # texture.set_colorkey(pygame.Color('black'))
+        print(self.player.position)
+        self.bill = BillboardSprite.BillboardSprite(texture, (60, 60))
 
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
@@ -318,9 +341,9 @@ class Render3D:
 
     def draw_floor(self, dir_, camera_plane):
         pos = self.map.to_local(self.player.position)
-        buffer = cast_floor_ceiling(*dir_, *camera_plane, *self.screen.get_size(), *pos, self.floor_texture, self.ceiling_texture)
+        buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, *self.screen.get_size(), *pos, self.floor_texture, self.ceiling_texture)
         screen = pygame.surfarray.make_surface(buffer)
-        # screen = pygame.transform.scale(screen, self.screen.get_size())
+    # screen = pygame.transform.scale(screen, seAlf.screen.get_size())
         screen.set_palette(self.floor_image.get_palette())
         screen.blit(self.shadow_mask, (0, 0), pygame.BLEND_MULT)
         # screen.set_alpha(None)
@@ -335,10 +358,13 @@ class Render3D:
 
         texture = self.texture
         tex_height = self.texture.get_height()
-        for x, colStart, colHeight, yStart, yHeight, color, texX in \
-                cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x, dir_.y,
+        tex_width = self.texture.get_width()
+        for x, colStart, colHeight, yStart, yHeight, color, texX, buffer in \
+                FasterMap.cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x, dir_.y,
                             camera_plane.y, self.H, self.player.vertical_angle, self.player.height,
                             self.texture.get_width(), tex_height):
+            if x < 0:
+                break
             # if 3:
             # pygame.draw.rect(screen, (color, color, color), (x, yStart, resolution, yHeight))
             if colHeight > 0 and colStart < tex_height:
@@ -346,14 +372,22 @@ class Render3D:
                 column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
                 column = pygame.transform.scale(column, (resolution, yHeight))
                 screen.blit(column, (x, yStart))
+        self.z_buffer = buffer
+
+        BillboardSprite.BillboardSprite.draw_all(pos, camera_plane, dir_, self.W, self.H, self.z_buffer,
+                                                 self.resolution, screen, global_val)
 
         return screen
+
 
     def render_background(self):
         Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.vertical_angle,
                                    self.map, self.camera_plane_length, self.player.position, self.player.height)
 
+global_val = False
+
 def main():
+    global global_val
     pygame.init()
     # screen = pg_structures.DisplayMods.Windowed((800, 800))
     screen = pg_structures.DisplayMods.FullScreenAccelerated()
@@ -371,7 +405,7 @@ def main():
     color = pygame.Color('white')
 
     player = Player3D(100, 100)
-    map_ = Map.from_file('Assets/Maps/map2.txt')
+    map_ = FasterMap.Map.from_file('Assets/Maps/map3.txt')
     renderer = Render3D(player, map_, screen)
     fps = 0
     frames = 0
@@ -395,16 +429,22 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:
                     player.with_ = False
+                    global_val += 1
                 elif event.button == 5:
                     player.with_ = True
+                    global_val -= 1
                 elif event.button == 1:
                     pistol.shoot()
-
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_u:
+                    global_val = True
+                elif event.key == pygame.K_j:
+                    global_val = False
         keys = pygame.key.get_pressed()
 
         renderer.render_rays()
 
-        player.update(elapsed, keys)
+        player._update(elapsed, keys)
 
         fps_now = clock.get_fps()
         fps += fps_now
@@ -417,8 +457,7 @@ def main():
 
         fps_sur = font.render(str(round(1000 / average_frame)), False, color)
         screen.blit(fps_sur, (0, 0))
-        tilt_sur = font.render("{} {} {}".format(pistol.shooting, pistol.fire_timer.finished(),
-                                                 pistol.animation.pointer), False, pygame.Color('white'))
+        tilt_sur = font.render("{}".format(global_val), False, pygame.Color('white'))
         screen.blit(tilt_sur, (0, 40))
 
         pistol.draw()

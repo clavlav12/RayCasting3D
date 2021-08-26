@@ -152,11 +152,16 @@ def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
     return wall_distance, side, texX,
 
 
+empty = np.empty(0, np.float64)
+
+
 @njit(nogil=True)
 def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, camera_y, H, tilt, height, tex_width,
                 tex_height, walls_ratio=1):
     """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
+    z_buffer = np.zeros(W, np.float64)
     inv_height = 2 - height
+
     for x in range(0, W, resolution):
         pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
         length, side, texX = cast_ray(array, pos_x, pos_y, dir_x + camera_x * pixel_camera_pos,
@@ -181,7 +186,11 @@ def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, came
         y_start = int(col_start * pixels_per_texel + draw_start + .5)
         y_height = int(col_height * pixels_per_texel + .5)
 
-        yield x, col_start, col_height, y_start, y_height, c, texX
+        z_buffer[x] = length
+
+        yield x, col_start, col_height, y_start, y_height, c, texX, empty
+
+    yield -1, col_start, col_height, y_start, y_height, c, texX, z_buffer
 
 
 @njit(nogil=True)
@@ -237,8 +246,8 @@ def cast_floor_ceiling(dir_x, dir_y, camera_x, camera_y, W, H, pos_x, pos_y, flo
             cell_x = int(floor_x)
             cell_y = int(floor_y)
 
-            tx = int(text_width * (floor_x - cell_x)) & (text_width - 1)
-            ty = int(text_height * (floor_y - cell_y)) & (text_height - 1)
+            tx = int(text_width * (floor_x - cell_x))
+            ty = int(text_height * (floor_y - cell_y))
 
             floor_x += floor_step_x
             floor_y += floor_step_y
@@ -263,9 +272,9 @@ if __name__ == '__main__':
 
     arr = pygame.surfarray.array2d(texture)
     buffer = cast_floor_ceiling(0.91632, 0.40044, -0.23119, 0.52904, 1920, 1080, 3.10000002, 3.10000002, arr)
-    
+
     image = pygame.surfarray.make_surface(buffer)
-    
+
     pygame.image.save(image, 'floor.png')
 #     fast = Map.from_file('map2.txt')
 #

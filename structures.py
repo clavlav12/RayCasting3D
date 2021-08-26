@@ -166,6 +166,9 @@ class RotationMatrix:
     def __rmul__(self, other):
         return self * other
 
+    def __str__(self):
+        return f'[  {self.m00}  {self.m10}' \
+               f'   {self.m01}  {self.m11}   ]'
 
 class Vector2:
     def __init__(self, x, y):  # parm = (r, theta) or (x, y)
@@ -173,8 +176,10 @@ class Vector2:
         self.y = y
 
     def angle(self):
-        return math.degrees(math.atan2(self.y, self.x)) + 180
+        return math.degrees(math.atan2(self.y, self.x))# + 180
 
+    def mag(self):
+        return math.hypot(self.x, self.y)
     def normalized(self):
         mag = math.hypot(self.x, self.y)
         return Vector2(self.x / mag, self.y / mag)
@@ -381,6 +386,9 @@ class Vector2:
             max(self.x, other.x),
             max(self.y, other.y)
         )
+
+    def magnitude_squared(self):
+        return self.x * self.x + self.y * self.y
 
     def to_pos(self):
         return tuple(self.floor())

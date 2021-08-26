@@ -17,11 +17,11 @@ class BaseSprite(pygame.sprite.Sprite):
         self.rw = rect_width
         self.rh = rect_height
 
-    def _update(self, dt, keys):
-        self.update()
+    def _update(self, dt, keys, *draw_args, **draw_kwargs):
+        self.update(dt, keys)
         self.move(keys)
         self.update_kinematics(dt)
-        self.draw()
+        self.draw(*draw_args, **draw_kwargs)
 
     def move(self, keys):
         pass
@@ -29,12 +29,16 @@ class BaseSprite(pygame.sprite.Sprite):
     def update_kinematics(self, dt):
         displacement = self.velocity * dt
         self.position.x += displacement.x
-        self.x_collision(displacement)
+
+        if self.wall_collision:
+            self.x_collision(displacement)
 
         self.position.y += displacement.y
-        self.y_collision(displacement)
 
-    def draw(self):
+        if self.wall_collision:
+            self.y_collision(displacement)
+
+    def draw(self, *args, **kwargs):
         pass
 
     def x_collision(self, displacement):

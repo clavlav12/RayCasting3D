@@ -1,8 +1,9 @@
-import FasterMap as Map
 import pygame
-import structures
-import pg_structures
+
+import FasterMap as Map
 import Player
+import pg_structures
+import structures
 
 
 class MapDrawer:
@@ -42,20 +43,57 @@ class MapDrawer:
         pass
 
 
+def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, dir_x, dir_y):
+    # print(z_buffer)
+
+    sprite_x = world_sprite_x - pos_x
+    sprite_y = world_sprite_y - pos_y
+
+    inv_det = 1 / (plane_x * dir_y - dir_x * plane_y)
+    transform_x = inv_det * (dir_y * sprite_x - dir_x * sprite_y)
+    transform_y = inv_det * (- plane_y * sprite_x + plane_x * sprite_y)
+
+    return transform_x, transform_y
+
+
 class PointPlayer(Player.Player):
+    def __init__(self, *args, **kwargs):
+        super(PointPlayer, self).__init__(*args, **kwargs)
+        self.sprite = Sprite((150, 150))
+
+        self.fov = 60
+        self.cpl = structures.DegTrigo.tan(self.fov / 2)
+
     def draw_ray_shadow(self, map_, screen):
         map_: Map.Map
-        fov = 45
         res = 180
-        dir_ = (structures.Vector2(*pygame.mouse.get_pos()) - self.position) * structures.RotationMatrix(-fov / 2)
+        fov = self.fov
+
+        dir_ = (structures.Vector2(*pygame.mouse.get_pos()) - self.position)# * structures.RotationMatrix(-fov / 2)
         dir_ = dir_.normalized()
-        matrix = structures.RotationMatrix(1 / res * fov)
-        for i in range(res):
-            length, *_ = map_.cast_ray(*map_.to_local(self.position), *dir_)
-            length = map_.to_global(length)
-            pygame.draw.line(screen, (255, 255, 0), self.position.to_pos(),
-                             (self.position + dir_ * (length)).to_pos(), 3)
-            dir_ *= matrix
+
+        #actual_dir = structures.Vector2(*pygame.mouse.get_pos()) - self.position
+        plane = dir_.tangent() * self.cpl
+
+        sprite_pos = map_.to_local(self.sprite.position)
+        transform = cast_sprite(*sprite_pos, *map_.to_local(self.position), *plane, *dir_)
+
+        transform = map_.to_global(transform)
+
+        # matrix = structures.RotationMatrix(1 / res * fov)
+        # for i in range(res):
+        #     length, *_ = map_.cast_ray(*map_.to_local(self.position), *dir_)
+        #     length = map_.to_global(length)
+        #     pygame.draw.line(screen, (255, 255, 0), self.position.to_pos(),
+        #                      (self.position + dir_ * (length)).to_pos(), 3)
+        #     dir_ *= matrix
+
+        pygame.draw.line(screen, pygame.Color('green'), self.position.to_pos(), (self.position + structures.Vector2(*transform) * structures.RotationMatrix(-dir_.angle())).to_pos(), 4)
+        pygame.draw.line(screen, pygame.Color('blue'), self.position.to_pos(), (self.position + dir_*50).to_pos(), 4)
+        pygame.draw.line(screen, pygame.Color('black'), self.position.to_pos(), (self.position + plane*50).to_pos(), 4)
+
+
+        self.sprite.draw(screen)
 
     def draw(self, screen, map_):
         pos = self.position.to_pos()
@@ -67,6 +105,15 @@ class PointPlayer(Player.Player):
         self.moving_direction = self.moving_direction.sign()
         super(PointPlayer, self).set_moving_direction(x, y)
 
+
+class Sprite:
+    def __init__(self, position):
+        self.position = position
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, pygame.Color('red'), self.position, 5)
+
+
 def main():
     pygame.init()
     screen = pg_structures.DisplayMods.Windowed((500, 500))
@@ -75,7 +122,7 @@ def main():
     fps = 1000
     map_drawer = MapDrawer(screen)
     background = map_drawer.get_background()
-    player = PointPlayer(150, 150)
+    player = PointPlayer(175, 175)
 
     font = pygame.font.SysFont("Roboto", 20)
     color = pygame.Color('white')
@@ -93,14 +140,12 @@ def main():
         elapsed = min(clock.tick(fps) / 1000.0, 1 / 30)
 
         map_drawer.draw()
-        player.update(elapsed, keys)
 
-        player.draw(screen, map_drawer.map)
+        player._update(elapsed, keys, screen, map_drawer.map)
 
         fps_sur = font.render(str(round(clock.get_fps())), False, color)
         screen.blit(fps_sur, (0, 0))
         pygame.display.flip()
-
 
 if __name__ == '__main__':
     main()

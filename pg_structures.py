@@ -151,6 +151,7 @@ class Timer:
     def time_to_finish(self):
         return self.delay - (time() - self.start_time)
 
+
 class Animation:
     """Collection class to make animations easier"""
     _key = object()
