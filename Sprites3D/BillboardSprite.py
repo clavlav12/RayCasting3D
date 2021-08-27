@@ -11,29 +11,26 @@ from FasterMap import Map
 
 @njit()
 def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, dir_x, dir_y, W, H, z_buffer,
-                text_width, text_height, move):
-    # print(z_buffer)
-    sqrt2 = math.sqrt(2)
+                text_width, text_height, camera_height, tilt):
+
     sprite_x = world_sprite_x - pos_x
     sprite_y = world_sprite_y - pos_y
     inv_det = 1 / (plane_x * dir_y - dir_x * plane_y)
     transform_x = inv_det * (dir_y * sprite_x - dir_x * sprite_y)
     transform_y = inv_det * (- plane_y * sprite_x + plane_x * sprite_y)
 
-    sprite_screen_x = abs(int((W // 2) * (1 + transform_x / transform_y)))
+    sprite_screen_x = int((W // 2) * (1 + transform_x / transform_y))
 
-    u_div = 4
-    v_div = 4
+    inv_height = 2 - camera_height
 
-    sprite_height = abs(int(H / transform_y / v_div))
+    u_div = 1
+    v_div = 1
+
+    draw_height = sprite_height = abs(int(H / transform_y / v_div))
 
     height_pixel = H // transform_y
     v_move_screen = height_pixel // 2 - sprite_height // 2
-
-    draw_start_y = - sprite_height // 2 + H // 2 + v_move_screen
-    draw_end_y = sprite_height // 2 + H // 2 + v_move_screen
-
-    draw_height = draw_end_y - draw_start_y
+    draw_start_y = - inv_height * sprite_height // 2 + H // 2 + v_move_screen + tilt
 
     sprite_width = abs(int(H / transform_y / u_div))
 
@@ -47,12 +44,15 @@ def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, 
         draw_end_x = W
 
     y_start = max(0, draw_start_y)
-    y_stop = min(H, draw_end_y)
+    y_stop = min(H, draw_height + draw_start_y)
 
     pixels_per_texel = draw_height / text_height
 
     col_start = int((y_start - draw_start_y) / pixels_per_texel + .5)
     col_height = int((y_stop - y_start) / pixels_per_texel + .5)
+
+    if col_height < 0 or col_start + col_height > text_height:
+        return
 
     y_start = int(col_start * pixels_per_texel + draw_start_y + .5)
     y_height = int(col_height * pixels_per_texel + .5)
@@ -73,13 +73,13 @@ class BillboardSprite(BaseSprite):
         self.texture = texture
 
     @classmethod
-    def draw_all(cls, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height):
+    def draw_all(cls, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt):
         cls.sprites.sort(key=lambda sprite: (sprite.position - viewer_position).magnitude_squared())
 
         for sprite in cls.sprites:
-            sprite.draw_3D(viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height)
+            sprite.draw_3D(viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt)
 
-    def draw_3D(self, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height):
+    def draw_3D(self, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt):
         tex_height = self.texture.get_height()
         texture = self.texture
         pos = Map.instance.to_local(self.position)
@@ -92,6 +92,7 @@ class BillboardSprite(BaseSprite):
                 z_buffer,
                 self.texture.get_width(), self.texture.get_height(),
                 height,
+                tilt
         ):
             # if col_height > 0 and col_start < tex_height:
             column = texture.subsurface((tex_x, col_start, 1, col_height)).copy()

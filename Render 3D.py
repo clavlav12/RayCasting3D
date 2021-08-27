@@ -30,7 +30,7 @@ class Player3D(Player):
         self.sensitivity_x = .02 * sensitivity
         self.sensitivity_y = 8 * sensitivity
 
-        self._vertical_angle = self.ground_height
+        self._vertical_angle = 0
         self._height = 1
 
         self.max_height = 2
@@ -67,7 +67,7 @@ class Player3D(Player):
         self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / self.fov * 30, False)
         # self.looking_direction = self.looking_direction * structures.RotationMatrix(90 * dt * self.sensitivity_x, True)
         diffY = pygame.mouse.get_pos()[1] - pg_structures.DisplayMods.current_height / 2
-        # self.vertical_angle -= diffY * self.sensitivity_y
+        self.vertical_angle -= diffY * self.sensitivity_y
         pygame.mouse.set_pos(pg_structures.DisplayMods.current_width / 2, pg_structures.DisplayMods.current_height / 2)
 
         self.ground_height = 1
@@ -229,7 +229,7 @@ class Background:
 
         elif self.type == structures.BackgroundType.textured:
             other = self.floor if self.floor is not self else self.ceiling
-            if other.type == structures.BackgroundType.textured and False:
+            if other.type == structures.BackgroundType.textured and height == 1 and vertical_angle == 0:
                 if self.is_floor:
                     return  # if both are textured only one casting is required
                 else:  # cast both
@@ -330,7 +330,7 @@ class Render3D:
         Render3D.instance = self
 
         texture = pygame.image.load(r'Assets\Images\Sprites\barrel.png  ').convert()
-        # texture.set_colorkey(pygame.Color('black'))
+        texture.set_colorkey(pygame.Color('black'))
         print(self.player.position)
         self.bill = BillboardSprite.BillboardSprite(texture, (60, 60))
 
@@ -375,7 +375,7 @@ class Render3D:
         self.z_buffer = buffer
 
         BillboardSprite.BillboardSprite.draw_all(pos, camera_plane, dir_, self.W, self.H, self.z_buffer,
-                                                 self.resolution, screen, global_val)
+                                                 self.resolution, screen, self.player.height, self.player.vertical_angle)
 
         return screen
 
