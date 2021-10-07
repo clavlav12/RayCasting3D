@@ -379,12 +379,13 @@ class Render3D:
 
         return screen
 
-
     def render_background(self):
         Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.vertical_angle,
                                    self.map, self.camera_plane_length, self.player.position, self.player.height)
 
+
 global_val = False
+
 
 def main():
     global global_val

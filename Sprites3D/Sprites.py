@@ -7,6 +7,7 @@ dx = 0.000001
 
 
 class BaseSprite(pygame.sprite.Sprite):
+    sprites = []
 
     def __init__(self, position, velocity, rect_width, rect_height):
         super(BaseSprite, self).__init__()
@@ -79,3 +80,15 @@ class BaseSprite(pygame.sprite.Sprite):
             return None
         except IndexError:
             return None
+
+    @classmethod
+    def update_all(cls, dt, keys, *draw_args, **draw_kwargs):
+        for sprite in cls.sprites:
+            sprite._update(dt, keys, *draw_args, **draw_kwargs)
+
+    def send_command(self):
+        # send a command to all the users
+        pass
+
+    def gog_command(self):
+        pass

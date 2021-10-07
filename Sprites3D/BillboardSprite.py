@@ -11,7 +11,7 @@ from FasterMap import Map
 
 @njit()
 def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, dir_x, dir_y, W, H, z_buffer,
-                text_width, text_height, camera_height, tilt):
+                text_width, text_height, camera_height, tilt, resolution):
 
     sprite_x = world_sprite_x - pos_x
     sprite_y = world_sprite_y - pos_y
@@ -36,12 +36,12 @@ def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, 
 
     draw_start_x = -sprite_width // 2 + sprite_screen_x
     if draw_start_x < 0:
-        draw_start_x = 0
+        draw_start_x = -resolution
 
     draw_end_x = sprite_width // 2 + sprite_screen_x
 
     if draw_end_x > W:
-        draw_end_x = W
+        draw_end_x = W + resolution
 
     y_start = max(0, draw_start_y)
     y_stop = min(H, draw_height + draw_start_y)
@@ -53,15 +53,28 @@ def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, 
 
     if col_height < 0 or col_start + col_height > text_height:
         return
-
     y_start = int(col_start * pixels_per_texel + draw_start_y + .5)
     y_height = int(col_height * pixels_per_texel + .5)
 
-    # draw_start_x = draw_start_x - draw_start_x % resolution + resolution
-    for stripe in range(draw_start_x, draw_end_x):
-        if z_buffer[stripe] > transform_y > 0 and W > stripe > 0:
-            tex_x = int(256 * (stripe - (-sprite_width / 2 + sprite_screen_x)) * text_width / sprite_width) / 256
-            yield stripe, col_start, col_height, y_start, y_height, tex_x
+    draw_start_x = draw_start_x - draw_start_x % resolution + resolution
+    start_stripe = None
+    color = max(1, int((255.0 - transform_y * 20)))
+    for stripe in range(draw_start_x, draw_end_x, resolution):
+        if z_buffer[stripe] > transform_y > 0 and W > stripe > 0:  # a stripe to draw.
+            # If there is no previous one - set it to the current stripe
+            if start_stripe is None:
+                start_stripe = stripe
+        else:  # A stripe not to draw. if there is a start stripe draw from it to last valid one\
+            if start_stripe is not None:
+                tex_x_start = int((start_stripe - (-sprite_width / 2 + sprite_screen_x)) * text_width / sprite_width)
+                tex_x_end = int(((stripe-resolution) - (-sprite_width / 2 + sprite_screen_x)) * text_width / sprite_width)
+                yield start_stripe, stripe-resolution, col_start, col_height, y_start, y_height, tex_x_start, tex_x_end, color
+                start_stripe = None
+
+    if start_stripe is not None and start_stripe + resolution < stripe:
+        tex_x_start = int((start_stripe - (-sprite_width / 2 + sprite_screen_x)) * text_width / sprite_width)
+        tex_x_end = int((stripe - (-sprite_width / 2 + sprite_screen_x)) * text_width / sprite_width)
+        yield start_stripe, stripe - resolution, col_start, col_height, y_start, y_height, tex_x_start, tex_x_end, color
 
 
 class BillboardSprite(BaseSprite):
@@ -83,7 +96,7 @@ class BillboardSprite(BaseSprite):
         tex_height = self.texture.get_height()
         texture = self.texture
         pos = Map.instance.to_local(self.position)
-        for x, col_start, col_height, y_start, y_height, tex_x in cast_sprite(
+        for x, end, col_start, col_height, y_start, y_height, tex_x_start, tex_x_end, color in cast_sprite(
                 pos[0], pos[1],
                 viewer_position[0], viewer_position[1],
                 camera_plane.x, camera_plane.y,
@@ -92,9 +105,11 @@ class BillboardSprite(BaseSprite):
                 z_buffer,
                 self.texture.get_width(), self.texture.get_height(),
                 height,
-                tilt
+                tilt,
+                resolution
         ):
             # if col_height > 0 and col_start < tex_height:
-            column = texture.subsurface((tex_x, col_start, 1, col_height)).copy()
-            column = pygame.transform.scale(column, (resolution, y_height))
+            column = texture.subsurface((tex_x_start, col_start, tex_x_end - tex_x_start, col_height)).copy()
+            column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
+            column = pygame.transform.scale(column, (end - x, y_height))
             screen.blit(column, (x, y_start))

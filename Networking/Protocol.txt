@@ -1,0 +1,35 @@
+"""
+This server syncs all groups media players.
+Group code is a string of 10 random numbers
+
+protocol:
+    Requests:  (client to server)
+        - Connect
+            :param kwargs
+
+        - Disconnect
+            :param kwargs
+
+        - KeyChange
+            :param keyNumber
+            :param isPressed
+
+        - SetAttr
+            :param attr
+            :param value
+
+    Responses: (server to client)
+        - Create
+            :param id (int in str format)
+            :param classId (int in str format)
+            :param kwargs
+            :param control (int in str format (0/1))
+
+        -  Update
+            :param id (int in str format)
+            :param kwargs
+
+Packet Protocol:
+    command ? parameter1_name=parameter2_value & parameter2_name=parameter2_value ...  \n (no spaces)
+    special characters must have backslash before
+"""
