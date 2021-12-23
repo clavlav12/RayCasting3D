@@ -74,7 +74,8 @@ class BillboardSprite(BaseSprite):
 
     @classmethod
     def draw_all(cls, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt):
-        cls.sprites.sort(key=lambda sprite: (sprite.position - viewer_position).magnitude_squared())
+        converted_viewer_position = Map.instance.to_global(viewer_position)
+        cls.sprites.sort(key=lambda sprite: (sprite.position - converted_viewer_position).magnitude_squared(), reverse=True)
 
         for sprite in cls.sprites:
             sprite.draw_3D(viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt)

@@ -5,6 +5,8 @@ import pygame as pg
 import numpy as np
 from win32api import GetSystemMetrics
 from typing import Union
+from PIL import Image
+import os
 
 
 def screen_maker(func):
@@ -89,7 +91,7 @@ class Textures:
     textures_num = 10
     __textures = [None] * textures_num
 
-    def __init__(self, id_: Union[int, type(None)], filename: str):
+    def __init__(self, id_: Union[int, type(None)], filename: str, to_index=False):
         if not filename.endswith('.png'):
             filename += '.png'
 
@@ -101,14 +103,27 @@ class Textures:
 
             Textures.__textures[id_] = self
 
-        self.texture = pg.image.load('Assets/Images/Textures/' + filename)  # .convert()
-        self.array = pg.surfarray.array2d(self.texture)
+        self.load_texture(filename)
+        self.id = id_
+
+    def load_texture(self, filename):
+        text_dir = 'Assets/Images/Textures/'
+        self.texture = pg.image.load(text_dir + filename)  # .convert()
         try:
             self.palette = self.texture.get_palette()
         except pg.error:
-            print(filename, 'has no palette')
-            self.palette = None
-        self.id = id_
+            im = Image.open(text_dir + filename)
+            im = im.quantize(colors=256, method=2)
+
+            im.save(text_dir + 'temp.png')
+            self.load_texture('temp.png')
+            os.remove(text_dir + 'temp.png')
+        self.array = pg.surfarray.array2d(self.texture)
+
+        # buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, *self.screen.get_size(), *pos, self.floor_texture, self.ceiling_texture)
+        # screen = pygame.surfarray.make_surface(buffer)
+        # # screen = pygame.transform.scale(screen, seAlf.screen.get_size())
+        # screen.set_palette(self.floor_image.get_palette())
 
 
 class Timer:

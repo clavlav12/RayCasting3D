@@ -194,7 +194,7 @@ class Background:
             self.panoramic_image = self.arg
 
     def textured_init(self):
-        self.arg = pg_structures.Textures(None, self.arg)
+        self.arg = pg_structures.Textures(None, self.arg, to_index=True)
 
     def imaged_init(self):
         image = pygame.image.load('Assets/Images/Background/' + self.arg)
@@ -228,8 +228,8 @@ class Background:
                         rect)
 
         elif self.type == structures.BackgroundType.textured:
-            other = self.floor if self.floor is not self else self.ceiling
-            if other.type == structures.BackgroundType.textured and height == 1 and vertical_angle == 0:
+            other = self.floor if self is not self.floor else self.ceiling
+            if other.type == structures.BackgroundType.textured and height == 1 and vertical_angle == 0 and self.arg is other.arg:
                 if self.is_floor:
                     return  # if both are textured only one casting is required
                 else:  # cast both
@@ -303,7 +303,7 @@ class Render3D:
         ceiling_colour = (50, 50, 50)
         floor_colour = (80, 80, 80)
 
-        self.texture = pygame.image.load('Assets/Images/Textures/brick2.png').convert()
+        self.texture = pygame.image.load('Assets/Images/Textures/wood_wall.png').convert()
 
         bg = pygame.image.load('Assets/Images/Background/bgr edited.png').convert()
         ratio = screen.get_width() / (bg.get_width() / 3)
@@ -313,26 +313,31 @@ class Render3D:
                                            int(bg.get_height() * ratio)))
 
         bg = bg.subsurface((0, 0, bg.get_width(), bg.get_height() // 2)).convert()
-        # Background.set_background(
-        #     structures.BackgroundType.panoramic,
-        #     structures.BackgroundType.textured,
-        #     bg,
-        #     'wood2.png',
-        #     *self.screen.get_size()
-        # )
         Background.set_background(
+            structures.BackgroundType.panoramic,
             structures.BackgroundType.textured,
-            structures.BackgroundType.textured,
-            'wood2.png',
+            bg,
             'wood2.png',
             *self.screen.get_size()
         )
+        # Background.set_background(
+        #     structures.BackgroundType.panoramic,
+        #     structures.BackgroundType.textured,
+        #     'background.png',
+        #     'blood wall dark.png',
+        #     *self.screen.get_size()
+        # )
         Render3D.instance = self
 
         texture = pygame.image.load(r'Assets\Images\Sprites\barrel.png  ').convert()
         texture.set_colorkey(pygame.Color('black'))
         print(self.player.position)
-        self.bill = BillboardSprite.BillboardSprite(texture, (60, 60))
+        pillar = pygame.image.load(r'Assets\Images\Sprites\pillar.png').convert()
+        pillar.set_colorkey(pygame.Color('black'))
+
+        self.bill = BillboardSprite.BillboardSprite(texture, (250, 250))
+        self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 3, 250 + 50 * 1))
+        self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 4, 250 + 50 * 1))
 
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
