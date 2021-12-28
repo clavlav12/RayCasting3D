@@ -50,7 +50,7 @@ class Player(BaseSprite):
 class Weapon:
 
     def __init__(self, animation_directory, fps, fire_rate, screen):
-        self.animation = pg_structures.Animation(animation_directory + '/*.gif', fps, False, scale=3)
+        self.animation = pg_structures.Animation.by_directory(animation_directory + '/*.gif', False, fps, scale=3)
         self.animation.set_pointer(-1)
         self.shooting = False
 

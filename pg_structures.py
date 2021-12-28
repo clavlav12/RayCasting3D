@@ -87,43 +87,85 @@ def draw_line_dashed(surface, color, start_pos, end_pos, width=1, dash_length=10
             for n in range(int(exclude_corners), dash_amount - int(exclude_corners), 3)]
 
 
-class Textures:
-    textures_num = 10
-    __textures = [None] * textures_num
+class Texture:
+    textures = {}
 
-    def __init__(self, id_: Union[int, type(None)], filename: str, to_index=False):
-        if not filename.endswith('.png'):
-            filename += '.png'
+    @classmethod
+    def initiate_handler(cls, resolution):
+        # create all textures from the assets folder recursively
+        cls._initiate_handler('Assets/Images', cls.textures, resolution)
 
-        if id_ is not None:  # ceiling or floor texture
-            if not self.textures_num > id_ > 0:
-                raise ValueError(f'id is not between 0 and {self.textures_num}')
-            if self.__textures[id_] is not None:
-                raise ValueError('id already taken')
+    @classmethod
+    def _initiate_handler(cls, folder, folder_dictionary, scaled_resolution):
+        # create all textures from the assets folder recursively
+        for item in os.listdir(folder):
+            full_path = os.path.join(folder, item)
+            if os.path.isdir(full_path):
+                folder_dictionary[item] = next = {}
+                cls._initiate_handler(full_path, next, scaled_resolution)
+            else:
+                if item.endswith('.png') or item.endswith('.jpg'):
+                    filename = os.path.splitext(item)[0] # remove the extension
+                    if filename in folder_dictionary:
+                        raise ValueError(f'Two textures named "{filename}"')
+                    folder_dictionary[] = cls(full_path, scaled_resolution)
 
-            Textures.__textures[id_] = self
+    def __init__(self, full_path, scaled_resolution):
+        self.name = full_path
+        self.load_texture(full_path)
 
-        self.load_texture(filename)
-        self.id = id_
+        self.array = None
+        self.palette = None
+        self.scaled_resolution = scaled_resolution
 
-    def load_texture(self, filename):
-        text_dir = 'Assets/Images/Textures/'
-        self.texture = pg.image.load(text_dir + filename)  # .convert()
+        self.cached_scaled = {}  # height: scaled texture
+
+    def change_resolution(self, new_resolution):
+        self.scaled_resolution = new_resolution
+        if self.cached_scaled is not None:
+            self.cached_scaled.clear()
+
+    def load_texture(self, path, load_palette=False):
+        self.texture = pg.image.load(path)
+
+    def load_palette(self):
+        self.palette = self.texture.get_palette()
+
+    def convert_to_index(self):
         try:
-            self.palette = self.texture.get_palette()
+            self.load_palette()
         except pg.error:
-            im = Image.open(text_dir + filename)
+            im = Image.open(self.name)
             im = im.quantize(colors=256, method=2)
 
-            im.save(text_dir + 'temp.png')
+            im.save('temp.png')
             self.load_texture('temp.png')
-            os.remove(text_dir + 'temp.png')
+            self.load_palette()
+            os.remove('temp.png')
+
+    def load_array(self):
         self.array = pg.surfarray.array2d(self.texture)
 
-        # buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, *self.screen.get_size(), *pos, self.floor_texture, self.ceiling_texture)
-        # screen = pygame.surfarray.make_surface(buffer)
-        # # screen = pygame.transform.scale(screen, seAlf.screen.get_size())
-        # screen.set_palette(self.floor_image.get_palette())
+    def disable_scale_caching(self):
+        self.cached_scaled = None
+
+    def get_stripe(self, x, full_height, stripe_y_start, stripe_height):
+        if self.cached_scaled is None:
+            scaled_texture = self.texture_cache.get(full_height, None)
+            if scaled_texture is None:
+                scaled_texture = pygame.transform.scale(texture, (self.scaled_resolution * self.texture.get_width(),
+                                                                  full_height))
+                texture_cache[full_height] = scaled_texture
+            #
+        # if col_height > 0 and col_start < tex_height:
+        try:
+            resolution = self.scaled_resolution
+            start = round(x) * resolution
+            if start + resolution > scaled_texture.get_width():
+                resolution = self.scaled_resolution.get_width() - start
+            return scaled_texture.subsurface((start, y_texture_start, resolution, y_height))
+        except Exception as e:
+            raise e
 
 
 class Timer:
@@ -169,14 +211,14 @@ class Timer:
 
 class Animation:
     """Collection class to make animations easier"""
-    _key = object()
     Frame = namedtuple('Frame', ('image', 'delay'))
 
-    def __init__(self, dir_regex, fps, repeat, flip_x=False, flip_y=False, scale=1):
+    @classmethod
+    def by_directory(cls, dir_regex, repeat, flip_x=False, flip_y=False, scale=1, fps=None):
         """
         Generates an Animation object from a directory
         :param dir_regex:  directory path regex (string)
-        :param fps: images per second (int)
+        :param fps: images per second (int) if none number is derived from file name (see Assets/Weapons/pistol for example)
         :param repeat: after finished to show all images, whether reset pointer or not (bool)
         :param flip_x: should the image be flipped horizontally (bool)
         :param flip_y: should the image be flipped vertically (bool)
@@ -184,16 +226,40 @@ class Animation:
         :return: Animation object (Animation)
         """
 
-        self.images_list = [
-            self.Frame(pg.transform.flip(pg.image.load(i), flip_x, flip_y).convert(), self.get_delay(i)) for i in glob(dir_regex)
+        files_list = glob(dir_regex)
+        average_delay = 1 / (fps or len(files_list))
+        images_list = [
+            cls.Frame(pg.transform.flip(pg.image.load(i), flip_x, flip_y).convert(), cls.get_delay(i) or average_delay) for i in files_list
         ]
 
         if scale != 1:
-            self.images_list = [
-                self.Frame(pg.transform.scale(i.image, (int(i.image.get_width() * scale),
+            images_list = [
+                cls.Frame(pg.transform.scale(i.image, (int(i.image.get_width() * scale),
                                                         int(i.image.get_height() * scale))).convert(), i.delay) for i in
-                self.images_list]
+                images_list]
 
+        return cls(images_list, repeat, fps)
+
+    def __init__(self, images_list, repeat, fps=None):
+        """
+        Generates an Animation object from an images_list
+        :param images_list:  list of pygame surfaces representing the individual frames of the animation
+        :param fps: images per second (int)
+        :param repeat: after finished to show all images, whether reset pointer or not (bool)
+        :param flip_x: should the image be flipped horizontally (bool)
+        :param flip_y: should the image be flipped vertically (bool)
+        :param scale: how much to scale the image (int)
+        :return: Animation object (Animation)
+        """
+        if len(images_list) == 1:
+            fps = 1
+        if fps is not None and (all(isinstance(i, pg.Surface) for i in images_list)):
+            delay = 1 / fps
+            self.images_list = [self.Frame(image, delay) for image in images_list]
+        elif all(isinstance(i, self.Frame) for i in images_list):
+            self.images_list = images_list
+        else:
+            raise ValueError("Can't process image_list")
         assert bool(self.images_list), "image list is empty"
         self.pointer = 0
         self.frames_per_second = fps
@@ -246,9 +312,19 @@ class Animation:
     def set_pointer(self, new):
         self.pointer = new
 
+    def modify_images(self, modifier, set_new=False):
+        for index in range(len(self.images_list)):
+            image = self.images_list[index].image
+            new = modifier(image)
+            if set_new:
+                self.images_list[index] = self.Frame(new, self.images_list[index].delay)
+
     @staticmethod
     def get_delay(path):
-        path = '.'.join(path.split('.')[:-1])
-        path = path.split('-')[-1]
-        path = path.replace('s', '')
-        return float(path)
+        try:
+            path = '.'.join(path.split('.')[:-1])
+            path = path.split('-')[-1]
+            path = path.replace('s', '')
+            return float(path)
+        except ValueError:
+            return None

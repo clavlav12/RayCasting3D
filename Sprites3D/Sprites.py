@@ -7,6 +7,7 @@ dx = 0.000001
 
 
 class BaseSprite(pygame.sprite.Sprite):
+    sprites = []
 
     def __init__(self, position, velocity, rect_width, rect_height):
         super(BaseSprite, self).__init__()
@@ -17,11 +18,18 @@ class BaseSprite(pygame.sprite.Sprite):
         self.rw = rect_width
         self.rh = rect_height
 
-    def _update(self, dt, keys, *draw_args, **draw_kwargs):
+        self.sprites.append(self)
+
+    @classmethod
+    def update_all(cls, dt, keys):
+        for sprite in cls.sprites:
+            sprite._update(dt, keys)
+
+    def _update(self, dt, keys):
         self.update(dt, keys)
         self.move(keys)
         self.update_kinematics(dt)
-        self.draw(*draw_args, **draw_kwargs)
+        self.draw()
 
     def move(self, keys):
         pass
@@ -38,7 +46,7 @@ class BaseSprite(pygame.sprite.Sprite):
         if self.wall_collision:
             self.y_collision(displacement)
 
-    def draw(self, *args, **kwargs):
+    def draw(self):
         pass
 
     def x_collision(self, displacement):

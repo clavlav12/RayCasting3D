@@ -5,7 +5,7 @@ import structures
 import pg_structures
 import numpy as np
 from threading import Thread
-from Sprites3D import BillboardSprite
+from Sprites3D import BillboardSprite, Sprites
 
 class Player3D(Player):
 
@@ -194,7 +194,9 @@ class Background:
             self.panoramic_image = self.arg
 
     def textured_init(self):
-        self.arg = pg_structures.Textures(None, self.arg, to_index=True)
+        self.arg = pg_structures.Texture(r'Assets/Images/Textures/' + self.arg, 1)
+        self.arg.convert_to_index()
+        self.arg.load_array()
 
     def imaged_init(self):
         image = pygame.image.load('Assets/Images/Background/' + self.arg)
@@ -329,15 +331,17 @@ class Render3D:
         # )
         Render3D.instance = self
 
-        texture = pygame.image.load(r'Assets\Images\Sprites\barrel.png  ').convert()
-        texture.set_colorkey(pygame.Color('black'))
+        texture = pygame.image.load(r'Assets\Images\Sprites\transparentBarrel.png  ').convert()
+        # texture.set_colorkey(pygame.Color('black'))
         print(self.player.position)
-        pillar = pygame.image.load(r'Assets\Images\Sprites\pillar.png').convert()
-        pillar.set_colorkey(pygame.Color('black'))
-
         self.bill = BillboardSprite.BillboardSprite(texture, (250, 250))
         self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 3, 250 + 50 * 1))
-        self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 4, 250 + 50 * 1))
+        pillar = BillboardSprite.LostSoul(r'Assets\Images\Sprites\lost soul\idle\*.png', (250 + 50 * 4, 250 + 50 * 1))
+
+        import pprint
+        pg_structures.Texture.initiate_handler(self.resolution)
+        
+        pprint.pprint(pg_structures.Texture.textures, indent=4)
 
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
@@ -380,7 +384,8 @@ class Render3D:
         self.z_buffer = buffer
 
         BillboardSprite.BillboardSprite.draw_all(pos, camera_plane, dir_, self.W, self.H, self.z_buffer,
-                                                 self.resolution, screen, self.player.height, self.player.vertical_angle)
+                                                 self.resolution, screen, self.player.height, self.player.vertical_angle,
+                                                 global_val)
 
         return screen
 
@@ -449,8 +454,8 @@ def main():
 
         renderer.render_rays()
 
-        player._update(elapsed, keys)
-
+        # player._update(elapsed, keys)
+        Sprites.BaseSprite.update_all(elapsed, keys)
         fps_now = clock.get_fps()
         fps += fps_now
         frames += 1
@@ -472,7 +477,7 @@ def main():
 
         # new = screen
         # new = pygame.transform.scale(screen, real_screen.get_size(), real_screen)
-        pygame.display.flip()
+        pygame.display.update()
 
     print(fps / frames)
 
