@@ -6,6 +6,8 @@ import pg_structures
 import numpy as np
 from threading import Thread
 from Sprites3D import BillboardSprite, Sprites
+from numba.typed import Dict
+from numba import types
 
 class Player3D(Player):
 
@@ -194,9 +196,8 @@ class Background:
             self.panoramic_image = self.arg
 
     def textured_init(self):
-        self.arg = pg_structures.Texture(r'Assets/Images/Textures/' + self.arg, 1)
-        self.arg.convert_to_index()
-        self.arg.load_array()
+        self.arg = pg_structures.Texture(r'Assets/Images/Textures/Named/' + self.arg, 1)
+        self.arg = pg_structures.IndexedTexture(self.arg)
 
     def imaged_init(self):
         image = pygame.image.load('Assets/Images/Background/' + self.arg)
@@ -291,6 +292,7 @@ class Render3D:
     instance = None
 
     def __init__(self, player, map_, screen):
+
         self.z_buffer = None
 
         self.W, self.H = screen.get_size()
@@ -300,12 +302,14 @@ class Render3D:
         self.fov = 60
         self.camera_plane_length = structures.DegTrigo.tan(self.fov / 2)
         self.resolution = 3
+
+        pg_structures.Texture.initiate_handler(self.resolution)
         self.screen = screen
 
         ceiling_colour = (50, 50, 50)
         floor_colour = (80, 80, 80)
 
-        self.texture = pygame.image.load('Assets/Images/Textures/wood_wall.png').convert()
+        # self.texture = pygame.image.load('Assets/Images/Textures/wood_wall.png').convert()
 
         bg = pygame.image.load('Assets/Images/Background/bgr edited.png').convert()
         ratio = screen.get_width() / (bg.get_width() / 3)
@@ -338,10 +342,6 @@ class Render3D:
         self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 3, 250 + 50 * 1))
         pillar = BillboardSprite.LostSoul(r'Assets\Images\Sprites\lost soul\idle\*.png', (250 + 50 * 4, 250 + 50 * 1))
 
-        import pprint
-        pg_structures.Texture.initiate_handler(self.resolution)
-        
-        pprint.pprint(pg_structures.Texture.textures, indent=4)
 
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
@@ -365,22 +365,36 @@ class Render3D:
         screen = self.screen
         screen.set_colorkey(pygame.Color('black'))
 
-        texture = self.texture
-        tex_height = self.texture.get_height()
-        tex_width = self.texture.get_width()
-        for x, colStart, colHeight, yStart, yHeight, color, texX, buffer in \
+        # texture = self.texture
+        textures: dict = pg_structures.Texture.textures['Textures']
+        heights = Dict.empty(key_type=types.int64, value_type=types.int64)
+        widths = Dict.empty(key_type=types.int64, value_type=types.int64)
+        heights[0] = 0
+        widths[0] = 0
+        for id_, tex in textures.items():
+            if isinstance(tex, dict):
+                continue
+            heights[int(id_)] = tex.texture.get_height()
+            widths[int(id_)] = tex.texture.get_width()
+        for x, y_texture_start, y_start, y_height, line_height, color, texX, buffer, tile_id in \
                 FasterMap.cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x, dir_.y,
                             camera_plane.y, self.H, self.player.vertical_angle, self.player.height,
-                            self.texture.get_width(), tex_height):
+                                      widths, heights):
             if x < 0:
                 break
+            if tile_id == 0:
+                continue
+            texture = textures[str(tile_id)]#.texture
             # if 3:
             # pygame.draw.rect(screen, (color, color, color), (x, yStart, resolution, yHeight))
-            if colHeight > 0 and colStart < tex_height:
-                column = texture.subsurface((texX, colStart, 1, colHeight)).copy()
-                column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
-                column = pygame.transform.scale(column, (resolution, yHeight))
-                screen.blit(column, (x, yStart))
+            # if y_height > 0 and colStart < heights[tile_id]:
+            column = texture.get_stripe(texX, line_height, y_texture_start, y_height)
+                # def get_stripe(self, x, full_height, stripe_y_start, stripe_height):
+                # column = texture.subsurface((texX, colStart, 1, colHeight)).copy()
+                # column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
+                # column = pygame.transform.scale(column, (resolution, yHeight))
+            if column is not None:
+                screen.blit(column, (x, y_start))
         self.z_buffer = buffer
 
         BillboardSprite.BillboardSprite.draw_all(pos, camera_plane, dir_, self.W, self.H, self.z_buffer,

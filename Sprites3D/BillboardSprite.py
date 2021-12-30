@@ -78,6 +78,7 @@ def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, 
         if z_buffer[stripe] > transform_y > 0 and W > stripe > 0:
             tex_x = int(256 * (stripe - (-sprite_width / 2 + sprite_screen_x)) * text_width / sprite_width) / 256
             yield stripe, y_texture_start, y_start, y_height, tex_x, draw_height
+                   #x, y_texture_start, y_start, y_height, tex_x, draw_height in cast_sprite(
 
 
 class BillboardSprite(BaseSprite):
@@ -101,7 +102,7 @@ class BillboardSprite(BaseSprite):
             if os.path.isfile(texture):
                 texture = pg_structures.Animation([pygame.image.load(texture)], repeat, fps)
             else:  # directory
-                texture = pg_structures.Animation.by_directory(texture, repeat, fps=fps)
+                texture = pg_structures.Animation.by_directory(texture, repeat, fps=fps, )
         if isinstance(texture, pygame.Surface):
             self.animation = pg_structures.Animation([texture], repeat, fps)
         elif isinstance(texture, pg_structures.Animation):

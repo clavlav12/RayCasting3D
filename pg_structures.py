@@ -6,6 +6,7 @@ import numpy as np
 from win32api import GetSystemMetrics
 from typing import Union
 from PIL import Image
+import pathlib
 import os
 
 
@@ -87,9 +88,21 @@ def draw_line_dashed(surface, color, start_pos, end_pos, width=1, dash_length=10
             for n in range(int(exclude_corners), dash_amount - int(exclude_corners), 3)]
 
 
-class Texture:
-    textures = {}
+class TextureMeta(type):
+    def __init__(self, *args, **kwargs):
+        self.textures = {}
+        super(TextureMeta, self).__init__(*args, **kwargs)
 
+    def __getitem__(self, path):
+        p = pathlib.Path(path)
+        split = p.parts
+        dir_dict = self.textures
+        for part in split[2:-1]:
+            dir_dict = dir_dict[part]
+        return dir_dict[p.stem]
+
+
+class Texture(metaclass=TextureMeta):
     @classmethod
     def initiate_handler(cls, resolution):
         # create all textures from the assets folder recursively
@@ -105,67 +118,74 @@ class Texture:
                 cls._initiate_handler(full_path, next, scaled_resolution)
             else:
                 if item.endswith('.png') or item.endswith('.jpg'):
-                    filename = os.path.splitext(item)[0] # remove the extension
+                    filename = os.path.splitext(item)[0]  # remove the extension
                     if filename in folder_dictionary:
                         raise ValueError(f'Two textures named "{filename}"')
-                    folder_dictionary[] = cls(full_path, scaled_resolution)
+                    folder_dictionary[filename] = cls(full_path, scaled_resolution)
 
     def __init__(self, full_path, scaled_resolution):
         self.name = full_path
-        self.load_texture(full_path)
+        self.texture = pg.image.load(full_path).convert()
 
-        self.array = None
-        self.palette = None
         self.scaled_resolution = scaled_resolution
 
-        self.cached_scaled = {}  # height: scaled texture
+        self.scaling_cache = {}  # height: scaled texture
 
     def change_resolution(self, new_resolution):
         self.scaled_resolution = new_resolution
-        if self.cached_scaled is not None:
-            self.cached_scaled.clear()
-
-    def load_texture(self, path, load_palette=False):
-        self.texture = pg.image.load(path)
-
-    def load_palette(self):
-        self.palette = self.texture.get_palette()
-
-    def convert_to_index(self):
-        try:
-            self.load_palette()
-        except pg.error:
-            im = Image.open(self.name)
-            im = im.quantize(colors=256, method=2)
-
-            im.save('temp.png')
-            self.load_texture('temp.png')
-            self.load_palette()
-            os.remove('temp.png')
-
-    def load_array(self):
-        self.array = pg.surfarray.array2d(self.texture)
+        if self.scaling_cache is not None:
+            self.scaling_cache.clear()
 
     def disable_scale_caching(self):
-        self.cached_scaled = None
+        self.scaling_cache = None
 
     def get_stripe(self, x, full_height, stripe_y_start, stripe_height):
-        if self.cached_scaled is None:
-            scaled_texture = self.texture_cache.get(full_height, None)
-            if scaled_texture is None:
-                scaled_texture = pygame.transform.scale(texture, (self.scaled_resolution * self.texture.get_width(),
-                                                                  full_height))
-                texture_cache[full_height] = scaled_texture
-            #
+        if (self.scaling_cache is None) or (full_height not in self.scaling_cache):
+            scaled_texture = pg.transform.scale(self.texture, (self.scaled_resolution * self.texture.get_width(),
+                                                               full_height))
+            if self.scaling_cache is not None:
+                self.scaling_cache[full_height] = scaled_texture
+        else:
+            scaled_texture = self.scaling_cache[full_height]
         # if col_height > 0 and col_start < tex_height:
         try:
             resolution = self.scaled_resolution
             start = round(x) * resolution
             if start + resolution > scaled_texture.get_width():
                 resolution = self.scaled_resolution.get_width() - start
-            return scaled_texture.subsurface((start, y_texture_start, resolution, y_height))
+            return scaled_texture.subsurface((start, stripe_y_start, resolution, stripe_height))
         except Exception as e:
-            raise e
+            pass
+            # raise e
+
+
+class IndexedTexture(Texture):
+    def __init__(self, texture: Texture):
+        super(IndexedTexture, self).__init__(texture.name, texture.scaled_resolution)
+        self.array = None
+        self.palette = None
+        p = pathlib.Path(texture.name)
+        split = p.parts
+        dir_dict = Texture.textures
+        for part in split[2:-1]:
+            dir_dict = dir_dict[part]
+        dir_dict[p.stem] = self
+        try:
+            self.palette = self.texture.get_palette()
+            self.indexed_texture = self.texture
+        except pg.error:
+            im = Image.open(self.name)
+            im = im.quantize(colors=256, method=2)
+
+            im.save('temp.png')
+            self.indexed_texture = pg.image.load('temp.png')
+            self.palette = self.indexed_texture.get_palette()
+            os.remove('temp.png')
+        self.load_array()
+
+    def load_array(self):
+        self.array = pg.surfarray.array2d(
+            self.indexed_texture)
 
 
 class Timer:
@@ -214,9 +234,11 @@ class Animation:
     Frame = namedtuple('Frame', ('image', 'delay'))
 
     @classmethod
-    def by_directory(cls, dir_regex, repeat, flip_x=False, flip_y=False, scale=1, fps=None):
+    def by_directory(cls, dir_regex, repeat, flip_x=False, flip_y=False, scale=1, fps=None, use_texture_handler=False):
         """
         Generates an Animation object from a directory
+        :param use_texture_handler: Whether the surface should be obtained from the texture handler or
+            from pygame.image.load
         :param dir_regex:  directory path regex (string)
         :param fps: images per second (int) if none number is derived from file name (see Assets/Weapons/pistol for example)
         :param repeat: after finished to show all images, whether reset pointer or not (bool)
@@ -225,17 +247,18 @@ class Animation:
         :param scale: how much to scale the image (int)
         :return: Animation object (Animation)
         """
-
+        # if use_texture_handler:
         files_list = glob(dir_regex)
         average_delay = 1 / (fps or len(files_list))
         images_list = [
-            cls.Frame(pg.transform.flip(pg.image.load(i), flip_x, flip_y).convert(), cls.get_delay(i) or average_delay) for i in files_list
+            cls.Frame(pg.transform.flip(pg.image.load(i), flip_x, flip_y).convert(), cls.get_delay(i) or average_delay)
+            for i in files_list
         ]
 
         if scale != 1:
             images_list = [
                 cls.Frame(pg.transform.scale(i.image, (int(i.image.get_width() * scale),
-                                                        int(i.image.get_height() * scale))).convert(), i.delay) for i in
+                                                       int(i.image.get_height() * scale))).convert(), i.delay) for i in
                 images_list]
 
         return cls(images_list, repeat, fps)
@@ -297,7 +320,7 @@ class Animation:
 
     def finished(self):
         """Returns true if the animation is done and not set to repeat"""
-        return (not self.repeat) and self.pointer == len(self.images_list) - 1 and self.timer.finished() # ??
+        return (not self.repeat) and self.pointer == len(self.images_list) - 1 and self.timer.finished()  # ??
 
     def __next__(self):
         return self.get_image()

@@ -75,7 +75,7 @@ class Map(structures.Singleton):
 
 
 @njit(nogil=True, fastmath=True)
-def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
+def cast_ray(array, start_x, start_y, direction_x, direction_y, widths):
     """
     Cast a ray from start_pos in the direction of the unit vector direction
     and returns it's length
@@ -111,7 +111,7 @@ def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
         ray_length_y += (start_y - map_y) * step_y
         step_dir_y = -1
 
-    tile_found = False
+    tile_found = 0
     while not tile_found:
         if ray_length_x < ray_length_y:
             map_x += step_dir_x
@@ -123,7 +123,7 @@ def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
             side = False
         if 0 <= map_x < width and 0 <= map_y < height:
             if array[map_y, map_x] != 0:
-                tile_found = True
+                tile_found = array[map_y, map_x]
         else:
             break
 
@@ -142,6 +142,7 @@ def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
     # wallX2 = abs((wallX - int(wallX)) - 1) -> reverses the texture
     wallX -= int(wallX)
 
+    tex_width = widths[tile_found]
     texX = int(wallX * tex_width)
 
     if side and direction_x > 0:
@@ -149,25 +150,25 @@ def cast_ray(array, start_x, start_y, direction_x, direction_y, tex_width):
     if (not side) and direction_y < 0:
         texX = tex_width - texX - 1
 
-    return wall_distance, side, texX,
+    return wall_distance, side, texX, tile_found
 
 
 empty = np.empty(0, np.float64)
 
 
 @njit(nogil=True)
-def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, camera_y, H, tilt, height, tex_width,
-                tex_height, walls_ratio=1):
+def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, camera_y, H, tilt, height, tex_widths,
+                tex_heights, walls_ratio=1):
     """Casts really really fast, but it takes another iteration to draw the lines so it is not efficient"""
     z_buffer = np.zeros(W, np.float64)
     inv_height = 2 - height
 
     for x in range(0, W, resolution):
         pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
-        length, side, texX = cast_ray(array, pos_x, pos_y, dir_x + camera_x * pixel_camera_pos,
-                                      dir_y + camera_y * pixel_camera_pos, tex_width)
+        length, side, texX, tile_id = cast_ray(array, pos_x, pos_y, dir_x + camera_x * pixel_camera_pos,
+                                      dir_y + camera_y * pixel_camera_pos, tex_widths)
 
-        line_height = walls_ratio * H / length
+        line_height = int(walls_ratio * H // length)
 
         draw_start = - inv_height * line_height / 2 + H / 2 + tilt
 
@@ -177,20 +178,22 @@ def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, came
 
         draw_end = draw_start + line_height
 
+        tex_height = tex_heights[tile_id]
         y_start = max(-tex_height, draw_start)
         y_stop = min(H + tex_height, draw_end)
         pixels_per_texel = line_height / tex_height
         col_start = int((y_start - draw_start) / pixels_per_texel + .5)
         col_height = int((y_stop - y_start) / pixels_per_texel + .5)
 
-        y_start = int(col_start * pixels_per_texel + draw_start + .5)
+        y_texture_start = col_start * pixels_per_texel
+        y_start = int(y_texture_start + draw_start + .5)
         y_height = int(col_height * pixels_per_texel + .5)
 
         z_buffer[x] = length
 
-        yield x, col_start, col_height, y_start, y_height, c, texX, empty
+        yield x, y_texture_start, y_start, y_height, line_height, c, texX, empty, tile_id
 
-    yield -1, col_start, col_height, y_start, y_height, c, texX, z_buffer
+    yield -1, y_texture_start, y_start, y_height, line_height, c, texX, z_buffer, 0
 
 
 @njit(nogil=True)
