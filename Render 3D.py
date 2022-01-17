@@ -1,3 +1,6 @@
+import collections
+import json
+
 from Player import Player, Weapon
 import pygame
 import FasterMap
@@ -8,6 +11,7 @@ from threading import Thread
 from Sprites3D import BillboardSprite, Sprites
 from numba.typed import Dict
 from numba import types
+
 
 class Player3D(Player):
 
@@ -150,13 +154,14 @@ class Player3D(Player):
 
 
 class Background:
+    BIG_TEXTURE = collections.namedtuple('BIG_TEXTURE', ('default', 'big_texture'))
     ceiling = None
     floor = None
     W = -1
     H = -1
 
     @classmethod
-    def set_background(cls, ceiling_type, floor_type, ceiling_arg, floor_arg, W, H):
+    def set_background(cls, ceiling_type, floor_type, ceiling_arg, floor_arg, W, H, ):
         """
         :param ceiling_type: Type of ceiling (structures.BackgroundType)
         :param floor_type:  Type of floor (structures.BackgroundType)
@@ -196,8 +201,27 @@ class Background:
             self.panoramic_image = self.arg
 
     def textured_init(self):
-        self.arg = pg_structures.Texture(r'Assets/Images/Textures/Named/' + self.arg, 1)
-        self.arg = pg_structures.IndexedTexture(self.arg)
+        if self.arg is not None:
+            if isinstance(self.arg, tuple):  # big texture
+                self.arg = self.BIG_TEXTURE(*self.arg)
+            if isinstance(self.arg, self.BIG_TEXTURE):  # big texture
+                self.arg = self.BIG_TEXTURE(*(pg_structures.Texture[texture] for texture in self.arg))
+                self.arg = self.BIG_TEXTURE(*(pg_structures.IndexedTexture(texture, False) for texture in self.arg))
+
+                srf = pygame.surfarray.make_surface(self.arg.big_texture.array)
+                srf.set_palette(self.arg.big_texture.palette)
+                pygame.image.save(srf, 'cityindexed.png')
+            else:
+                self.arg = pg_structures.Texture[r'Textures/Named/' + self.arg]
+                self.arg = pg_structures.IndexedTexture(self.arg, False)
+        else:  # otherwise create a list
+            folder = pg_structures.Texture.textures_list()
+            for file in folder:
+                pg_structures.IndexedTexture(file, True)
+            folder = pg_structures.Texture.textures_list()
+
+            self.arg = np.asarray([texture.array for texture in folder])
+
 
     def imaged_init(self):
         image = pygame.image.load('Assets/Images/Background/' + self.arg)
@@ -215,7 +239,8 @@ class Background:
         if self.floor is self:
             start = self.H // 2
         if self.type in (structures.BackgroundType.image, structures.BackgroundType.solid):
-            rect = screen.blit(self.background, (0, start + vertical_angle * self.is_floor), (0, 0, self.W, self.H // 2 + sign * vertical_angle))
+            rect = screen.blit(self.background, (0, start + vertical_angle * self.is_floor),
+                               (0, 0, self.W, self.H // 2 + sign * vertical_angle))
             # pygame.draw.rect(screen, (255, 0, 0), rect, 1)
         elif self.type == structures.BackgroundType.panoramic:
 
@@ -231,40 +256,78 @@ class Background:
                         rect)
 
         elif self.type == structures.BackgroundType.textured:
-            other = self.floor if self is not self.floor else self.ceiling
-            if other.type == structures.BackgroundType.textured and height == 1 and vertical_angle == 0 and self.arg is other.arg:
+            if isinstance(self.arg, pg_structures.IndexedTexture):
+                textures_map = np.ndarray(FasterMap.Map.instance.shape, np.int64)
+                textures_map.fill(0)
+
+                textures_array = np.asarray([self.arg.array])
+            elif isinstance(self.arg, np.ndarray):
                 if self.is_floor:
-                    return  # if both are textured only one casting is required
-                else:  # cast both
+                    textures_map = FasterMap.Map.instance.floor_array
+                else:
+                    textures_map = FasterMap.Map.instance.ceiling_array
+                textures_array = self.arg
+
+            try:
+                if isinstance(self.arg, (np.ndarray, pg_structures.IndexedTexture)):
                     background = self.get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen,
-                                                        other.arg.array, self.arg.array, other.arg.palette, height, vertical_angle)
-                    screen.blit(background, (0, 0))
-            else:  # only cast self
-                background = self.get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen,
-                                                    self.arg.array if self.is_floor else None,
-                                                    self.arg.array if not self.is_floor else None,
-                                                    self.arg.palette,
-                                                    height,
-                                                    vertical_angle
-                                                    )
-                screen.blit(background, (0, start + vertical_angle * self.is_floor))
+                                                        textures_map,
+                                                        textures_array,
+                                                        pg_structures.IndexedTexture.palette,
+                                                        height,
+                                                        vertical_angle,
+                                                        self.is_floor
+                                                        )
+                elif isinstance(self.arg, self.BIG_TEXTURE):
+                    background = self.get_floor_ceiling_big_texture(map_, position, looking_direction, camera_plane_length, screen,
+                                          self.arg.big_texture.array,
+                                                                    8,
+                                                                    self.arg.default.array,
+                                          pg_structures.IndexedTexture.palette,
+                                          height,
+                                          vertical_angle,
+                                          self.is_floor
+                                          )
+
+            except Exception as e:
+                raise e
+            screen.blit(background, (0, start + vertical_angle * self.is_floor))
 
     @staticmethod
-    def get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen, floor_texture,
-                          ceiling_texture, palette, height, vertical_angle):
+    def get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen, textures_map, textures_list,
+                          palette, height, vertical_angle, is_floor):
 
         dir_ = looking_direction.normalized()
         camera_plane = dir_.tangent() * camera_plane_length
         pos = map_.to_local(position)
 
         buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, screen.get_width(), screen.get_height(), *pos,
-                                    floor_texture if floor_texture is not None else np.zeros((0, 0), np.int64),
-                                    ceiling_texture if ceiling_texture is not None else np.zeros((0, 0), np.int64),
-                                    floor_texture is not None,
-                                    ceiling_texture is not None,
-                                    height,
-                                    int(vertical_angle),
-                                    )
+                                              textures_list, textures_map,
+                                              height,
+                                              int(vertical_angle),
+                                              is_floor
+                                              )
+
+        screen = pygame.surfarray.make_surface(buffer)
+        screen.set_palette(palette)
+
+        return screen
+
+    @staticmethod
+    def get_floor_ceiling_big_texture(map_, position, looking_direction, camera_plane_length, screen, big_texture,
+                                      tile_size, default_texture, palette, height, vertical_angle, is_floor):
+
+        dir_ = looking_direction.normalized()
+        camera_plane = dir_.tangent() * camera_plane_length
+        pos = map_.to_local(position)
+
+        buffer = FasterMap.cast_floor_ceiling_big_texture(*dir_, *camera_plane, screen.get_width(), screen.get_height(),
+                                                          *pos,
+                                                          big_texture, tile_size, default_texture,
+                                                          height,
+                                                          int(vertical_angle),
+                                                          is_floor
+                                                          )
 
         screen = pygame.surfarray.make_surface(buffer)
         screen.set_palette(palette)
@@ -272,7 +335,8 @@ class Background:
         return screen
 
     @classmethod
-    def draw_background(cls, screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height, threaded=None):
+    def draw_background(cls, screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position,
+                        height, threaded=None):
         if threaded is None:  # automatically decide
             threaded = cls.floor.type == cls.ceiling.type == structures.BackgroundType.textured
         args = (screen, fov, looking_direction, vertical_angle, map_, camera_plane_length, position, height)
@@ -319,44 +383,43 @@ class Render3D:
                                            int(bg.get_height() * ratio)))
 
         bg = bg.subsurface((0, 0, bg.get_width(), bg.get_height() // 2)).convert()
+        # Background.set_background(
+        #     structures.BackgroundType.textured,
+        #     structures.BackgroundType.textured,
+        #     r'greystone.png',
+        #     None,
+        #     *self.screen.get_size()
+        # )
+
         Background.set_background(
             structures.BackgroundType.panoramic,
             structures.BackgroundType.textured,
             bg,
-            'wood2.png',
+                # (r'Textures\Named\wood.png', r'Textures/galletcity.png'),
+            None,
             *self.screen.get_size()
         )
-        # Background.set_background(
-        #     structures.BackgroundType.panoramic,
-        #     structures.BackgroundType.textured,
-        #     'background.png',
-        #     'blood wall dark.png',
-        #     *self.screen.get_size()
-        # )
         Render3D.instance = self
 
         texture = pygame.image.load(r'Assets\Images\Sprites\transparentBarrel.png  ').convert()
         # texture.set_colorkey(pygame.Color('black'))
         print(self.player.position)
-        self.bill = BillboardSprite.BillboardSprite(texture, (250, 250))
-        self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 3, 250 + 50 * 1))
-        pillar = BillboardSprite.LostSoul(r'Assets\Images\Sprites\lost soul\idle\*.png', (250 + 50 * 4, 250 + 50 * 1))
-
-
+        # self.bill = BillboardSprite.BillboardSprite(texture, (250, 250), self.resolution)
+        # self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 3, 250 + 50 * 1), self.resolution)
+        # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (250 + 50 * 4, 250 + 50 * 1),
+        #                                   self.resolution)
+        # self.bill = BillboardSprite.BillboardSprite(texture, (75, 75), self.resolution)
+        self.bill = BillboardSprite.BillboardSprite(texture, (100, 110), self.resolution, vertical_scale=2, horizontal_scale=2)
+        # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (150, 75), self.resolution)
+        # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (100, 110), self.resolution)
+        # textures: dict = pg_structures.Texture.textures_list()
+        # lst = json.load(open(r'C:\Users\קובי\Documents\GitHub\RayCasting3D\MapsManipulations\sprites_map.pickle', 'rb'))
+        # ts = FasterMap.Map.instance.tile_size
+       
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
         camera_plane = dir_.tangent() * self.camera_plane_length
         self.cast_and_draw(dir_, camera_plane)
-
-    def draw_floor(self, dir_, camera_plane):
-        pos = self.map.to_local(self.player.position)
-        buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, *self.screen.get_size(), *pos, self.floor_texture, self.ceiling_texture)
-        screen = pygame.surfarray.make_surface(buffer)
-    # screen = pygame.transform.scale(screen, seAlf.screen.get_size())
-        screen.set_palette(self.floor_image.get_palette())
-        screen.blit(self.shadow_mask, (0, 0), pygame.BLEND_MULT)
-        # screen.set_alpha(None)
-        self.screen.blit(screen, (0, self.screen.get_height() // 2), (0, self.screen.get_height() // 2, self.screen.get_width(), self.screen.get_height()))
 
     def cast_and_draw(self, dir_, camera_plane):
         pos = self.map.to_local(self.player.position)
@@ -366,49 +429,50 @@ class Render3D:
         screen.set_colorkey(pygame.Color('black'))
 
         # texture = self.texture
-        textures: dict = pg_structures.Texture.textures['Textures']
-        heights = Dict.empty(key_type=types.int64, value_type=types.int64)
-        widths = Dict.empty(key_type=types.int64, value_type=types.int64)
-        heights[0] = 0
-        widths[0] = 0
-        for id_, tex in textures.items():
-            if isinstance(tex, dict):
-                continue
-            heights[int(id_)] = tex.texture.get_height()
-            widths[int(id_)] = tex.texture.get_width()
-        for x, y_texture_start, y_start, y_height, line_height, color, texX, buffer, tile_id in \
-                FasterMap.cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x, dir_.y,
-                            camera_plane.y, self.H, self.player.vertical_angle, self.player.height,
+        textures: dict = pg_structures.Texture.textures_list()
+        heights = np.asarray([texture.texture.get_height() for texture in textures if not isinstance(texture, dict)])
+        widths = np.asarray([texture.texture.get_width() for texture in textures if not isinstance(texture, dict)])
+        # heights[0] = 0
+        # widths[0] = 0
+        # for id_, tex in enumerate(textures):
+        #     if isinstance(tex, dict):
+        #         continue
+        #     heights[int(id_)] = tex.texture.get_height()
+        #     widths[int(id_)] = tex.texture.get_width()
+        for x, colStart, colHeight, yStart, yHeight, color, texX, buffer, tile_id in \
+                FasterMap.cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x,
+                                      dir_.y,
+                                      camera_plane.y, self.H, self.player.vertical_angle, self.player.height,
                                       widths, heights):
             if x < 0:
                 break
             if tile_id == 0:
                 continue
-            texture = textures[str(tile_id)]#.texture
+            texture = textures[tile_id].texture
             # if 3:
             # pygame.draw.rect(screen, (color, color, color), (x, yStart, resolution, yHeight))
-            # if y_height > 0 and colStart < heights[tile_id]:
-            column = texture.get_stripe(texX, line_height, y_texture_start, y_height)
-                # def get_stripe(self, x, full_height, stripe_y_start, stripe_height):
-                # column = texture.subsurface((texX, colStart, 1, colHeight)).copy()
-                # column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
-                # column = pygame.transform.scale(column, (resolution, yHeight))
-            if column is not None:
-                screen.blit(column, (x, y_start))
+            if colHeight > 0 and colStart < heights[tile_id]:
+                # column = texture.sca
+                column = texture.subsurface((texX, colStart, 1, colHeight)).copy()
+                column.fill((color, color, color), special_flags=pygame.BLEND_MULT)
+                column = pygame.transform.scale(column, (resolution, yHeight))
+                screen.blit(column, (x, yStart))
         self.z_buffer = buffer
 
         BillboardSprite.BillboardSprite.draw_all(pos, camera_plane, dir_, self.W, self.H, self.z_buffer,
-                                                 self.resolution, screen, self.player.height, self.player.vertical_angle,
+                                                 self.resolution, screen, self.player.height,
+                                                 self.player.vertical_angle,
                                                  global_val)
 
         return screen
-
 
     def render_background(self):
         Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.vertical_angle,
                                    self.map, self.camera_plane_length, self.player.position, self.player.height)
 
+
 global_val = False
+
 
 def main():
     global global_val
@@ -429,7 +493,8 @@ def main():
     color = pygame.Color('white')
 
     player = Player3D(100, 100)
-    map_ = FasterMap.Map.from_file('Assets/Maps/map3.txt')
+    map_ = FasterMap.Map.from_file(r'Assets/Maps/FloorTestMaps/walls.txt', r'Assets/Maps/FloorTestMaps/floor.txt')
+    # map_ = FasterMap.Map.from_file(r'MapsManipulations/map.txt', None)
     renderer = Render3D(player, map_, screen)
     fps = 0
     frames = 0
@@ -481,19 +546,20 @@ def main():
 
         fps_sur = font.render(str(round(1000 / average_frame)), False, color)
         screen.blit(fps_sur, (0, 0))
-        tilt_sur = font.render("{}".format(global_val), False, pygame.Color('white'))
+        tilt_sur = font.render("{}".format(player.position), False, pygame.Color('white'))
         screen.blit(tilt_sur, (0, 40))
 
         pistol.draw()
 
         elapsed_real = clock.tick(FPS)
-        elapsed = elapsed_real / 1000 # min(elapsed_real / 1000.0, 1 / 30)
+        elapsed = elapsed_real / 1000  # min(elapsed_real / 1000.0, 1 / 30)
 
         # new = screen
         # new = pygame.transform.scale(screen, real_screen.get_size(), real_screen)
         pygame.display.update()
 
     print(fps / frames)
+
 
 if __name__ == '__main__':
     import cProfile

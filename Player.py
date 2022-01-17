@@ -60,7 +60,7 @@ class Weapon:
             fire_rate = float('inf')
         self.fire_timer = pg_structures.Timer(1 / fire_rate)
 
-        rect = self.animation.get_image(False).get_rect()
+        rect = self.animation.get_image(False).texture.get_rect()
         rect.center = screen.get_rect().center
         rect.bottom = screen.get_rect().bottom
         self.rect = rect
@@ -75,7 +75,7 @@ class Weapon:
             self.shoot_next = True
 
     def draw(self):
-        next_image = self.animation.get_image()
+        next_image = self.animation.get_image().texture
         if self.animation.finished():
             self.shooting = False
 

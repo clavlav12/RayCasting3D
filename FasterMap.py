@@ -10,8 +10,22 @@ from numba import njit
 class Map(structures.Singleton):
     TILE_SIZE = 50
 
-    def __init__(self, arr, tile_size=TILE_SIZE):
-        self.__map = np.array(arr, np.int64)
+    def __init__(self, tile_array, floor_array, ceiling_array, tile_size=TILE_SIZE):
+        self.__map: np.array = np.array(tile_array, np.int64)
+        if floor_array is not None:
+            self.floor_array: np.array = np.array(floor_array, np.int64)
+        else:
+            self.floor_array = None
+
+        if ceiling_array is not None:
+            self.ceiling_array: np.array = np.array(ceiling_array, np.int64)
+        else:
+            self.ceiling_array = None
+
+        floor_match = self.floor_array is None or self.floor_array.shape == self.__map.shape
+        ceiling_match = self.ceiling_array is None or self.ceiling_array.shape == self.__map.shape
+        if not (floor_match and ceiling_match):
+            raise ValueError('Maps are not the same size', self.floor_array.shape, self.__map.shape)
         self.tile_size = tile_size
 
         self.width = len(self.columns())
@@ -20,20 +34,32 @@ class Map(structures.Singleton):
     def map(self):
         return self.__map
 
+    @property
+    def shape(self):
+        return self.__map.shape
+
     @classmethod
-    def from_file(cls, filename):
+    def from_file(cls, map_, floor_map=None, ceiling_map=None):
+        if floor_map is not None:
+            floor_map = cls.load_file(floor_map)
+        if ceiling_map is not None:
+            ceiling_map = cls.load_file(ceiling_map)
+        return cls(cls.load_file(map_), floor_map, ceiling_map)
+
+    @staticmethod
+    def load_file(filename):
         with open(filename, 'r') as file:
             map_ = []
             line_size = None
             for line in file:
-                line = line.strip().replace(' ', '')
+                line = line.replace('\n', '')
+                line = line.split(' ')
+                line = list(filter(lambda x: bool(x), line))
                 if (not len(line) == line_size) and (line_size is not None):
-                    raise ValueError('Rows lengths are not uniform')
+                    raise ValueError('Rows lengths are not uniform', line)
                 line_size = len(line)
-                l = list(line)
-                l = [int(x) for x in l]
-                map_.append(l)
-        return cls(map_)
+                map_.append([int(x) for x in line])
+        return map_
 
     def __str__(self):
         return '\n'.join(' '.join(line) for line in self.__map)
@@ -166,9 +192,10 @@ def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, came
     for x in range(0, W, resolution):
         pixel_camera_pos = 2 * x / W - 1  # Turns the screen to coordinates from -1 to 1
         length, side, texX, tile_id = cast_ray(array, pos_x, pos_y, dir_x + camera_x * pixel_camera_pos,
-                                      dir_y + camera_y * pixel_camera_pos, tex_widths)
-
-        line_height = int(walls_ratio * H // length)
+                                               dir_y + camera_y * pixel_camera_pos, tex_widths)
+        if length == 0:
+            continue
+        line_height = walls_ratio * H / length
 
         draw_start = - inv_height * line_height / 2 + H / 2 + tilt
 
@@ -185,39 +212,27 @@ def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, came
         col_start = int((y_start - draw_start) / pixels_per_texel + .5)
         col_height = int((y_stop - y_start) / pixels_per_texel + .5)
 
-        y_texture_start = col_start * pixels_per_texel
-        y_start = int(y_texture_start + draw_start + .5)
+        y_start = int(col_start * pixels_per_texel + draw_start + .5)
         y_height = int(col_height * pixels_per_texel + .5)
 
         z_buffer[x] = length
 
-        yield x, y_texture_start, y_start, y_height, line_height, c, texX, empty, tile_id
+        yield x, col_start, col_height, y_start, y_height, c, texX, empty, tile_id
 
-    yield -1, y_texture_start, y_start, y_height, line_height, c, texX, z_buffer, 0
+    yield -1, 0, 0, 0, 0, 0, 0, z_buffer, 0
 
 
 @njit(nogil=True)
-def cast_floor_ceiling(dir_x, dir_y, camera_x, camera_y, W, H, pos_x, pos_y, floor_texture, ceiling_texture,
-                       floor, ceiling, h, vertical_angle):
-    # H = H // 4
-    # W = W // 4
-    is_floor = not (0, 0) == floor_texture.shape
-    is_ceiling = not (0, 0) == ceiling_texture.shape
-    if is_floor and not is_ceiling:
-        text_width, text_height = floor_texture.shape
-    elif is_ceiling and not is_floor:
-        text_width, text_height = ceiling_texture.shape
-    elif floor_texture.shape == ceiling_texture.shape:
-        text_width, text_height = ceiling_texture.shape
-    else:
-        raise ValueError('Texture sizes do not match')
-
+def cast_floor_ceiling(dir_x, dir_y, camera_x, camera_y, W, H, pos_x, pos_y, textures_array, texture_map,
+                       h, vertical_angle, is_floor):
     # negative vertical_angle means down!
-    if is_floor and not is_ceiling:
+    if is_floor:
         vertical_angle = - vertical_angle  # needs to draw more when looking down and less if looking down
-    elif is_ceiling and not is_floor:
+    else:
         h = 2 - h
-    height = (floor + ceiling) * H // 2
+
+    height = H // 2
+    map_width, map_height = texture_map.shape
     buffer = np.zeros((W, max(height + vertical_angle, 0)), np.int8)
     for y in range(H // 2 + 1, H + vertical_angle):
         # rayDir for leftmost ray (x = 0) and rightmost ray (x = w)
@@ -249,6 +264,12 @@ def cast_floor_ceiling(dir_x, dir_y, camera_x, camera_y, W, H, pos_x, pos_y, flo
             cell_x = int(floor_x)
             cell_y = int(floor_y)
 
+            if 0 <= cell_x < map_height and 0 <= cell_y < map_width:
+                text = textures_array[texture_map[cell_y, cell_x]]
+            else:
+                text = textures_array[0]
+            text_width, text_height = text.shape
+
             tx = int(text_width * (floor_x - cell_x))
             ty = int(text_height * (floor_y - cell_y))
 
@@ -260,11 +281,84 @@ def cast_floor_ceiling(dir_x, dir_y, camera_x, camera_y, W, H, pos_x, pos_y, flo
             # print('after:', format(color, '032b'))
             # color = (color >> 1) & 8355711
             # print(row_distance)
-            if floor:
-                color = floor_texture[tx, ty]
+            color = text[tx, ty]
+
+            if is_floor:
                 buffer[x, y - height] = color
-            if ceiling:
-                color = ceiling_texture[tx, ty]
+            else:
+                buffer[x, height - y - 1] = color
+    return buffer
+
+
+@njit(nogil=True)
+def cast_floor_ceiling_big_texture(dir_x, dir_y, camera_x, camera_y, W, H, pos_x, pos_y, big_texture, tile_size,
+                                   default_texture,
+                       h, vertical_angle, is_floor):
+    # negative vertical_angle means down!
+    if is_floor:
+        vertical_angle = - vertical_angle  # needs to draw more when looking down and less if looking down
+    else:
+        h = 2 - h
+
+    height = H // 2
+    map_width, map_height = big_texture.shape
+    map_width //= tile_size
+    map_height //= tile_size
+    buffer = np.zeros((W, max(height + vertical_angle, 0)), np.int8)
+    for y in range(H // 2 + 1, H + vertical_angle):
+        # rayDir for leftmost ray (x = 0) and rightmost ray (x = w)
+        ray_dir_x0 = dir_x - camera_x
+        ray_dir_y0 = dir_y - camera_y
+        ray_dir_x1 = dir_x + camera_x
+        ray_dir_y1 = dir_y + camera_y
+
+        # Current y position compared to the center of the screen (the horizon)
+        p = y - H // 2
+
+        # Vertical position of the camera.
+        pos_z = H * h / 2
+
+        # Horizontal distance from the camera to the floor for the current row.
+        # 0.5 is the z position exactly in the middle between floor and ceiling.
+        row_distance = pos_z / p
+
+        # calculate the real world step vector we have to add for each x (parallel to camera plane)
+        # adding step by step avoids multiplications with a weight in the inner loop
+        floor_step_x = row_distance * (ray_dir_x1 - ray_dir_x0) / W
+        floor_step_y = row_distance * (ray_dir_y1 - ray_dir_y0) / W
+
+        # real world coordinates of the leftmost column. This will be updated as we step to the right.
+        floor_x = pos_x + row_distance * ray_dir_x0
+        floor_y = pos_y + row_distance * ray_dir_y0
+
+        for x in range(W):
+            cell_x = int(floor_x)
+            cell_y = int(floor_y)
+
+            if 0 <= cell_x < map_width and 0 <= cell_y < map_height:
+                text = big_texture[
+                       cell_x * tile_size:(cell_x+1) * tile_size,
+                       cell_y * tile_size:(cell_y+1) * tile_size,
+                       ]
+            else:
+                text = default_texture
+
+            tx = int(tile_size * (floor_x - cell_x))
+            ty = int(tile_size * (floor_y - cell_y))
+
+            floor_x += floor_step_x
+            floor_y += floor_step_y
+
+            # print('before:', format(color, '032b'))
+            # color <<= 1
+            # print('after:', format(color, '032b'))
+            # color = (color >> 1) & 8355711
+            # print(row_distance)
+            color = text[tx, ty]
+
+            if is_floor:
+                buffer[x, y - height] = color
+            else:
                 buffer[x, height - y - 1] = color
     return buffer
 

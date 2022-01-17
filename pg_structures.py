@@ -1,12 +1,14 @@
 from collections import namedtuple
 from glob import glob
+from pprint import pprint
 from time import time
 import pygame as pg
 import numpy as np
+import pygame.image
 from win32api import GetSystemMetrics
 from typing import Union
 from PIL import Image
-import pathlib
+from pathlib import Path
 import os
 
 
@@ -91,22 +93,57 @@ def draw_line_dashed(surface, color, start_pos, end_pos, width=1, dash_length=10
 class TextureMeta(type):
     def __init__(self, *args, **kwargs):
         self.textures = {}
+        self.TEXTURES_DIRECTORY = r'Assets\Images'
+
         super(TextureMeta, self).__init__(*args, **kwargs)
 
+    @staticmethod
+    def path_is_parent(parent_path, child_path):
+        parent_path = os.path.abspath(parent_path)
+        child_path = os.path.abspath(child_path)
+        return os.path.commonpath([parent_path]) == os.path.commonpath([parent_path, child_path])
+
+    def in_texture_directory(self, path):
+        if os.path.isabs(path):
+            return self.path_is_parent(self.TEXTURES_DIRECTORY, path)
+        else:
+            return os.path.exists(os.path.join(self.TEXTURES_DIRECTORY, path))
+
     def __getitem__(self, path):
-        p = pathlib.Path(path)
+        if not self.in_texture_directory(path):
+            raise KeyError(f'Given path {path} is not in Assets\Images')
+        elif not os.path.isdir(path) and (os.path.isfile(path) and os.path.splitext(path)[1] not in ('.png', '.jpg')):
+            raise KeyError(f'Path given {path} is not a valid file or directory.' )
+        if os.path.isabs(path):
+            path = os.path.relpath(path, self.TEXTURES_DIRECTORY)
+
+        if path.endswith('.png') or path.endswith('.jpg'):
+            path = path[:-4]
+        p = Path(path)
         split = p.parts
         dir_dict = self.textures
-        for part in split[2:-1]:
+        for part in split:
+            # print(part, dir_dict)  # CAPITAL PROBLEMS
             dir_dict = dir_dict[part]
-        return dir_dict[p.stem]
+            # print("new:", dir_dict)
+        return dir_dict
 
 
 class Texture(metaclass=TextureMeta):
     @classmethod
+    def textures_list(cls):
+        files = cls[r'Textures\Mapped']
+        keys = filter(lambda filename: filename.isnumeric, files.keys())
+        return [files[str(i)] for i in range(len((*keys,)))]
+
+    @classmethod
+    def copy(cls, texture):
+        return cls(texture.texture, texture.scaled_resolution)
+
+    @classmethod
     def initiate_handler(cls, resolution):
         # create all textures from the assets folder recursively
-        cls._initiate_handler('Assets/Images', cls.textures, resolution)
+        cls._initiate_handler(cls.TEXTURES_DIRECTORY, cls.textures, resolution)
 
     @classmethod
     def _initiate_handler(cls, folder, folder_dictionary, scaled_resolution):
@@ -123,9 +160,15 @@ class Texture(metaclass=TextureMeta):
                         raise ValueError(f'Two textures named "{filename}"')
                     folder_dictionary[filename] = cls(full_path, scaled_resolution)
 
-    def __init__(self, full_path, scaled_resolution):
-        self.name = full_path
-        self.texture = pg.image.load(full_path).convert()
+    def __init__(self, image_or_path, scaled_resolution):
+        if isinstance(image_or_path, str):
+            self.texture = pg.image.load(image_or_path).convert()
+            self.path = image_or_path  # saved locating in textures dict
+        elif isinstance(image_or_path, pg.Surface):
+            self.texture = image_or_path.copy().convert()
+            self.path = None
+        else:
+            raise ValueError("image_or_path isn't an image nor a path")
 
         self.scaled_resolution = scaled_resolution
 
@@ -141,11 +184,13 @@ class Texture(metaclass=TextureMeta):
 
     def get_stripe(self, x, full_height, stripe_y_start, stripe_height):
         if (self.scaling_cache is None) or (full_height not in self.scaling_cache):
+            # print("scaling", full_height)
             scaled_texture = pg.transform.scale(self.texture, (self.scaled_resolution * self.texture.get_width(),
                                                                full_height))
             if self.scaling_cache is not None:
                 self.scaling_cache[full_height] = scaled_texture
         else:
+            # print("taking from cache", full_height)
             scaled_texture = self.scaling_cache[full_height]
         # if col_height > 0 and col_start < tex_height:
         try:
@@ -158,30 +203,64 @@ class Texture(metaclass=TextureMeta):
             pass
             # raise e
 
+    def transform_texture(self, transform_function, *args, set_to_new=False, **kwargs):
+        value = transform_function(self.texture, *args, **kwargs)
+        if set_to_new:
+            self.texture = value
+
 
 class IndexedTexture(Texture):
-    def __init__(self, texture: Texture):
-        super(IndexedTexture, self).__init__(texture.name, texture.scaled_resolution)
-        self.array = None
-        self.palette = None
-        p = pathlib.Path(texture.name)
-        split = p.parts
-        dir_dict = Texture.textures
-        for part in split[2:-1]:
-            dir_dict = dir_dict[part]
-        dir_dict[p.stem] = self
-        try:
-            self.palette = self.texture.get_palette()
-            self.indexed_texture = self.texture
-        except pg.error:
-            im = Image.open(self.name)
-            im = im.quantize(colors=256, method=2)
+    uniform_size = (64, 64)
 
-            im.save('temp.png')
-            self.indexed_texture = pg.image.load('temp.png')
-            self.palette = self.indexed_texture.get_palette()
-            os.remove('temp.png')
-        self.load_array()
+    total_palette = pygame.Surface((0, 0))
+
+    indexed = []  # (subsurface, self)
+    palette = ((0, 0, 0, 255), ) * 256
+
+    def __init__(self, texture: Texture, resize_to_uniform):
+        super(IndexedTexture, self).__init__(texture.texture, texture.scaled_resolution)
+        self.array = None
+        self.resize_to_uniform = resize_to_uniform
+        text = texture.texture
+        if self.resize_to_uniform:
+            if self.uniform_size is None:
+                self.uniform_size = text.get_size()
+            else:
+                text = pygame.transform.scale(text, self.uniform_size)
+
+        rect = text.get_rect(topleft=(self.total_palette.get_width(), 0))
+        if self.total_palette.get_size() == (0, 0):
+            IndexedTexture.total_palette = text.copy()
+        else:
+            new = pg.Surface((self.total_palette.get_width() + text.get_width(),
+                              max(self.total_palette.get_height(), text.get_height())))
+            new.blit(IndexedTexture.total_palette, (0, 0))
+            new.blit(text, (self.total_palette.get_width(), 0))
+            IndexedTexture.total_palette = new
+
+        if texture.path is not None:  # save self instead of texture
+
+            p = Path(texture.path)
+            split = p.parts
+            dir_dict = Texture.textures
+            for part in split[2:-1]:
+                dir_dict = dir_dict[part]
+            dir_dict[p.stem] = self
+
+        filepath = 'temp.png'
+        pygame.image.save(IndexedTexture.total_palette, filepath)
+        im = Image.open(filepath)
+        im = im.quantize(colors=256, method=2)
+        im.save('temp.png')
+        self.indexed.append((rect, self))
+        full_indexed_texture = pg.image.load('temp.png')
+        IndexedTexture.palette = full_indexed_texture.get_palette()
+        self.indexed_texture: pygame.Surface
+        for rect, texture in self.indexed:
+            texture.indexed_texture = full_indexed_texture.subsurface(rect).copy()
+            texture.load_array()
+
+        os.remove('temp.png')
 
     def load_array(self):
         self.array = pg.surfarray.array2d(
@@ -234,11 +313,11 @@ class Animation:
     Frame = namedtuple('Frame', ('image', 'delay'))
 
     @classmethod
-    def by_directory(cls, dir_regex, repeat, flip_x=False, flip_y=False, scale=1, fps=None, use_texture_handler=False):
+    def by_directory(cls, dir_regex, repeat, flip_x=False, flip_y=False, scale=1, fps=None,
+                     texture_handler_resolution=None):
         """
         Generates an Animation object from a directory
-        :param use_texture_handler: Whether the surface should be obtained from the texture handler or
-            from pygame.image.load
+        :param texture_handler_resolution: resolution to pass to Texture handler
         :param dir_regex:  directory path regex (string)
         :param fps: images per second (int) if none number is derived from file name (see Assets/Weapons/pistol for example)
         :param repeat: after finished to show all images, whether reset pointer or not (bool)
@@ -251,15 +330,19 @@ class Animation:
         files_list = glob(dir_regex)
         average_delay = 1 / (fps or len(files_list))
         images_list = [
-            cls.Frame(pg.transform.flip(pg.image.load(i), flip_x, flip_y).convert(), cls.get_delay(i) or average_delay)
+            cls.Frame(Texture(i, texture_handler_resolution), cls.get_delay(i) or average_delay)
             for i in files_list
         ]
 
+        if flip_x or flip_y:
+            for image, _ in images_list:
+                image: Texture
+                image.transform_texture(pg.transform.flip, flip_x, flip_y, set_to_new=True)
         if scale != 1:
-            images_list = [
-                cls.Frame(pg.transform.scale(i.image, (int(i.image.get_width() * scale),
-                                                       int(i.image.get_height() * scale))).convert(), i.delay) for i in
-                images_list]
+            for image, _ in images_list:
+                image: Texture
+                image.transform_texture(pg.transform.scale, (int(image.texture.get_width() * scale),
+                                                             int(image.texture.get_height() * scale)), set_to_new=True)
 
         return cls(images_list, repeat, fps)
 
@@ -276,7 +359,7 @@ class Animation:
         """
         if len(images_list) == 1:
             fps = 1
-        if fps is not None and (all(isinstance(i, pg.Surface) for i in images_list)):
+        if fps is not None and (all(isinstance(i, (pg.Surface, Texture)) for i in images_list)):
             delay = 1 / fps
             self.images_list = [self.Frame(image, delay) for image in images_list]
         elif all(isinstance(i, self.Frame) for i in images_list):
@@ -297,7 +380,7 @@ class Animation:
                 self.update_pointer()
                 self.timer.activate(self.images_list[self.pointer].delay)
 
-        return self.images_list[self.pointer].image  # ??
+        return self.images_list[self.pointer].image
 
     def update_pointer(self):
         """
@@ -338,9 +421,14 @@ class Animation:
     def modify_images(self, modifier, set_new=False):
         for index in range(len(self.images_list)):
             image = self.images_list[index].image
-            new = modifier(image)
-            if set_new:
-                self.images_list[index] = self.Frame(new, self.images_list[index].delay)
+
+            if isinstance(image, pg.Surface):
+                new = modifier(image)
+                if set_new:
+                    self.images_list[index] = self.Frame(new, self.images_list[index].delay)
+            elif isinstance(image, Texture):
+                image.transform_texture(modifier, set_to_new=set_new)
+                new = image
 
     @staticmethod
     def get_delay(path):
