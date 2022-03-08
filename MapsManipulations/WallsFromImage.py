@@ -60,7 +60,10 @@ for column in range(0, tile_map.get_height(), ts):
             if tile_hash in sprites_hashed:
                 sprites.append(((row // ts, column // ts), str(hashes.index(tile_hash))))
         else:
-            buffer += str(hashes.index(tile_hash)) + ' '
+            try:
+                buffer += str(hashes.index(tile_hash)) + ' '
+            except ValueError:
+                buffer += '0 '
 
     buffer += '\n'
 

@@ -199,7 +199,7 @@ def cast_screen(W, resolution, array, pos_x, pos_y, dir_x, camera_x, dir_y, came
 
         draw_start = - inv_height * line_height / 2 + H / 2 + tilt
 
-        c = max(1, int((255.0 - length * 20) * (1 - side * 0.25)))  # length coefficient
+        c = max(1, int((255.0 - length * 5) * (1 - side * 0.25)))  # length coefficient
         # measures how distance affect brightness. Side coefficient measures how sunlight affects the brightness (.25)
         # seems to be the right choice
 

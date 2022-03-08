@@ -8,7 +8,7 @@ import structures
 import pg_structures
 import numpy as np
 from threading import Thread
-from Sprites3D import BillboardSprite, Sprites
+from Sprites3D import BillboardSprite, Sprites, PanoramicSprites
 from numba.typed import Dict
 from numba import types
 
@@ -68,7 +68,7 @@ class Player3D(Player):
     def vertical_angle(self, value):
         self._vertical_angle = min(max(-self.max_view_angle, value), self.max_view_angle)
 
-    def update(self, dt, keys):
+    def update_bef(self, dt, keys):
         diffX = pygame.mouse.get_pos()[0] - pg_structures.DisplayMods.current_width / 2
         self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / self.fov * 30, False)
         # self.looking_direction = self.looking_direction * structures.RotationMatrix(90 * dt * self.sensitivity_x, True)
@@ -296,11 +296,14 @@ class Background:
     @staticmethod
     def get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen, textures_map, textures_list,
                           palette, height, vertical_angle, is_floor):
-
+        
+        
+        s = screen
         dir_ = looking_direction.normalized()
         camera_plane = dir_.tangent() * camera_plane_length
         pos = map_.to_local(position)
-
+        
+        
         buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, screen.get_width(), screen.get_height(), *pos,
                                               textures_list, textures_map,
                                               height,
@@ -320,6 +323,7 @@ class Background:
         dir_ = looking_direction.normalized()
         camera_plane = dir_.tangent() * camera_plane_length
         pos = map_.to_local(position)
+        s = screen
 
         buffer = FasterMap.cast_floor_ceiling_big_texture(*dir_, *camera_plane, screen.get_width(), screen.get_height(),
                                                           *pos,
@@ -331,6 +335,7 @@ class Background:
 
         screen = pygame.surfarray.make_surface(buffer)
         screen.set_palette(palette)
+        #screen = pygame.transform.scale(screen, (s.get_width(), s.get_height()//2))
 
         return screen
 
@@ -395,8 +400,8 @@ class Render3D:
             structures.BackgroundType.panoramic,
             structures.BackgroundType.textured,
             bg,
-                # (r'Textures\Named\wood.png', r'Textures/galletcity.png'),
-            None,
+            (r'Textures\Named\wood.png', r'Textures/galletcity.png'),
+            # None,
             *self.screen.get_size()
         )
         Render3D.instance = self
@@ -411,11 +416,14 @@ class Render3D:
         # self.bill = BillboardSprite.BillboardSprite(texture, (75, 75), self.resolution)
         self.bill = BillboardSprite.BillboardSprite(texture, (100, 110), self.resolution, vertical_scale=2, horizontal_scale=2)
         # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (150, 75), self.resolution)
-        # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (100, 110), self.resolution)
-        # textures: dict = pg_structures.Texture.textures_list()
-        # lst = json.load(open(r'C:\Users\קובי\Documents\GitHub\RayCasting3D\MapsManipulations\sprites_map.pickle', 'rb'))
-        # ts = FasterMap.Map.instance.tile_size
-       
+        pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (100, 1450), self.resolution, )
+        textures: dict = pg_structures.Texture.textures_list()
+        lst = json.load(open(r'D:\GitHub Repositories\RayCasting3D\MapsManipulations\sprites_map.pickle', 'rb'))
+        ts = FasterMap.Map.instance.tile_size
+        for (x, y), id_ in lst:
+            BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), self.resolution, vertical_scale=2, horizontal_scale=1)
+        LS = PanoramicSprites.PanoramicLostSoul(player.position + (100x, 1), structures.Vector2(*player.looking_direction))
+
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()
         camera_plane = dir_.tangent() * self.camera_plane_length
@@ -477,8 +485,10 @@ global_val = False
 def main():
     global global_val
     pygame.init()
-    # screen = pg_structures.DisplayMods.Windowed((800, 800))
-    screen = pg_structures.DisplayMods.FullScreenAccelerated()
+    screen = pg_structures.DisplayMods.Windowed((800 * 16 // 9, 800))
+    # screen = pg_structures.DisplayMods.FullScreenAccelerated()
+    #resScale = 2
+    #screen = pygame.Surface((1920/resScale, 1080/resScale)).convert()
     # resolution = 1
     # screen = pygame.Surface((real_screen.get_width() // resolution, real_screen.get_height() // resolution)).convert()
     # screen.set_alpha(None)
@@ -492,8 +502,8 @@ def main():
     font = pygame.font.SysFont("Roboto", 40)
     color = pygame.Color('white')
 
-    player = Player3D(100, 100)
-    map_ = FasterMap.Map.from_file(r'Assets/Maps/FloorTestMaps/walls.txt', r'Assets/Maps/FloorTestMaps/floor.txt')
+    player = Player3D(100, 1500)
+    map_ = FasterMap.Map.from_file(r'D:\GitHub Repositories\RayCasting3D\MapsManipulations\map.txt')
     # map_ = FasterMap.Map.from_file(r'MapsManipulations/map.txt', None)
     renderer = Render3D(player, map_, screen)
     fps = 0
@@ -518,10 +528,10 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:
                     player.with_ = False
-                    global_val += 1
+                    global_val += 2
                 elif event.button == 5:
                     player.with_ = True
-                    global_val -= 1
+                    global_val -= 2
                 elif event.button == 1:
                     pistol.shoot()
             elif event.type == pygame.KEYDOWN:
@@ -546,7 +556,7 @@ def main():
 
         fps_sur = font.render(str(round(1000 / average_frame)), False, color)
         screen.blit(fps_sur, (0, 0))
-        tilt_sur = font.render("{}".format(player.position), False, pygame.Color('white'))
+        tilt_sur = font.render("{}".format(global_val), False, pygame.Color('white'))
         screen.blit(tilt_sur, (0, 40))
 
         pistol.draw()
@@ -556,6 +566,7 @@ def main():
 
         # new = screen
         # new = pygame.transform.scale(screen, real_screen.get_size(), real_screen)
+        #pygame.transform.scale(screen, Realscreen.get_size(), Realscreen)
         pygame.display.update()
 
     print(fps / frames)

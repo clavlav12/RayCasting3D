@@ -132,7 +132,7 @@ class TextureMeta(type):
 class Texture(metaclass=TextureMeta):
     @classmethod
     def textures_list(cls):
-        files = cls[r'Textures\Mapped']
+        files = cls[r'Textures\Mapped2']
         keys = filter(lambda filename: filename.isnumeric, files.keys())
         return [files[str(i)] for i in range(len((*keys,)))]
 
@@ -365,7 +365,7 @@ class Animation:
         elif all(isinstance(i, self.Frame) for i in images_list):
             self.images_list = images_list
         else:
-            raise ValueError("Can't process image_list")
+            raise ValueError("Can't process image_list", images_list)
         assert bool(self.images_list), "image list is empty"
         self.pointer = 0
         self.frames_per_second = fps

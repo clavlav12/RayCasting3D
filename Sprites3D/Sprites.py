@@ -20,15 +20,22 @@ class BaseSprite(pygame.sprite.Sprite):
 
         self.sprites.append(self)
 
+    def update_bef(self, dt, keys):
+        pass
+
+    def update_aft(self, dt, keys):
+        pass
+
     @classmethod
     def update_all(cls, dt, keys):
         for sprite in cls.sprites:
             sprite._update(dt, keys)
 
     def _update(self, dt, keys):
-        self.update(dt, keys)
+        self.update_bef(dt, keys)
         self.move(keys)
         self.update_kinematics(dt)
+        self.update_aft(dt, keys)
         self.draw()
 
     def move(self, keys):
@@ -87,3 +94,5 @@ class BaseSprite(pygame.sprite.Sprite):
             return None
         except IndexError:
             return None
+
+

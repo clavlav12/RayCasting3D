@@ -152,12 +152,6 @@ class RotationMatrix:
         self.m01 = -self.m10
         self.m11 = self.m00
 
-        if not RotationMatrix.ROT_INIT:
-            RotationMatrix.ROT_INIT = True
-            RotationMatrix.ROT90 = RotationMatrix(90)
-            RotationMatrix.ROT180 = RotationMatrix(180)
-            RotationMatrix.ROT270 = RotationMatrix(270)
-
     def __mul__(self, other):
         if isinstance(other, Vector2):
             return Vector2(self.m00 * other.x + self.m10 * other.y, self.m01 * other.x + self.m11 * other.y)
@@ -169,6 +163,15 @@ class RotationMatrix:
     def __str__(self):
         return f'[  {self.m00}  {self.m10}' \
                f'   {self.m01}  {self.m11}   ]'
+
+    @classmethod
+    def init(cls):
+        if not RotationMatrix.ROT_INIT:
+            RotationMatrix.ROT_INIT = True
+            RotationMatrix.ROT90 = RotationMatrix(90)
+            RotationMatrix.ROT180 = RotationMatrix(180)
+            RotationMatrix.ROT270 = RotationMatrix(270)
+RotationMatrix.init()
 
 class Vector2:
     def __init__(self, x, y):  # parm = (r, theta) or (x, y)

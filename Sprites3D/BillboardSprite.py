@@ -40,16 +40,13 @@ def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, 
     sprite_screen_x = int((W // 2) * (1 + transform_x / transform_y))
 
     inv_height = 2 - camera_height
-    u_div = 1
-    v_div = 1
-
-    sprite_height = int(H // transform_y)
-    draw_height = int(sprite_height // v_div)
-    v_move_screen = 0 #sprite_height // 2 + vertical_position // transform_y
-    draw_start_y = - inv_height * sprite_height // 2 + H // 2 + v_move_screen + tilt
+    draw_height = sprite_height = abs(int(H / transform_y / vertical_scale))
+    height_pixel = H // transform_y
+    v_move_screen = height_pixel - sprite_height + (vertical_position) // transform_y
+    draw_start_y = - inv_height * height_pixel // 2 + H // 2 + v_move_screen + tilt
     # draw_start_y = - H // transform_y // 2 + H // 2
 
-    sprite_width = abs(int(H / transform_y / u_div))
+    sprite_width = abs(int(H / transform_y / horizontal_scale))
 
     draw_start_x = -sprite_width // 2 + sprite_screen_x
     if draw_start_x < 0:
@@ -75,6 +72,7 @@ def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, 
     y_start = int(y_texture_start + draw_start_y + .5)
     y_height = int(col_height * pixels_per_texel + .5)
 
+    # y_height *= vertical_scale
     # draw_start_x = draw_start_x - draw_start_x % resolution + resolution
     for stripe in range(draw_start_x, draw_end_x):
         if z_buffer[stripe] > transform_y > 0 and W > stripe > 0:
@@ -88,12 +86,12 @@ class BillboardSprite(BaseSprite):
 
     # self.texture = AnimationDescriptor()
 
-    def __init__(self, texture, position, resolution, vertical_position=0, vertical_scale=1, horizontal_scale=1):
-        super(BillboardSprite, self).__init__(position, (0, 0), 1, 1)  # change 1,1 later!
+    def __init__(self, texture, position, resolution, vertical_position=0, vertical_scale=1, horizontal_scale=1, velocity=(0, 0), fps=None):
+        super(BillboardSprite, self).__init__(position, velocity, 1, 1)  # change 1,1 later!
         self.billboard_sprites.append(self)
 
         self.resolution = resolution
-        self.set_animation(texture)
+        self.animation = self.get_animation(texture, fps=fps)
 
         self.vertical_position = vertical_position
         self.vertical_scale = vertical_scale
@@ -106,7 +104,7 @@ class BillboardSprite(BaseSprite):
             return texture.copy(texture)
         return texture
 
-    def set_animation(self, texture, repeat=False, fps=None):
+    def get_animation(self, texture, repeat=False, fps=None):
         if isinstance(texture, str):
             try:
                 texture = pg_structures.Texture[texture]
@@ -133,9 +131,9 @@ class BillboardSprite(BaseSprite):
             texture = pg_structures.Texture(texture, self.resolution)
 
         if isinstance(texture, pg_structures.Texture):
-            self.animation = pg_structures.Animation([texture], repeat, fps)
+            return pg_structures.Animation([texture], repeat, fps)
         elif isinstance(texture, pg_structures.Animation):
-            self.animation = texture
+            return texture
 
     @classmethod
     def draw_all(cls, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt,
@@ -202,7 +200,6 @@ class BillboardSprite(BaseSprite):
             if column is not None:
                 # if global_val > 0:
                     # column = pygame.transform.scale(column, (resolution, y_height), )
-                print(y_start)
                 screen.blit(column, (x, y_start))
 
     def get_current_texture(self):
@@ -211,7 +208,7 @@ class BillboardSprite(BaseSprite):
 
 class LostSoul(BillboardSprite):
     def __init__(self, texture, position, resolution):
-        super(LostSoul, self).__init__(texture, position, resolution)
+        super(LostSoul, self).__init__(texture, position, resolution, fps=2)
         self.animation.repeat = True
         self.amplitude = 50
         self.offset = -200
@@ -225,7 +222,7 @@ class LostSoul(BillboardSprite):
         self.vertical_acceleration = 0  # F  = - k * dx, set k to 0 then F = - dx
         # so different from previous frame is = frequency * amplitude * cos(dt * frequency)
 
-    def update(self, dt, keys):
+    def update_aft(self, dt, keys):
         dt = min(1 / 15, dt)
         # print(self.vertical_position, self.frequency * self.amplitude * math.cos(dt * self.frequency), math.cos(dt * self.frequency))
         self.vertical_velocity += -(self.vertical_position - self.offset) * self.frequency ** 2
