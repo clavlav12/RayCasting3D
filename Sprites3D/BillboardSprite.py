@@ -27,6 +27,18 @@ import sys
 #     if isinstance(value, pygame.Surface):
 #         instance.__dict__[self.name] = value
 
+class RenderSettings:
+    Fov = 90
+    Resolution = 3
+
+    @classmethod
+    def fov(cls):
+        return cls.Fov
+
+    @classmethod
+    def resolution(cls):
+        return cls.Resolution
+
 
 @njit()
 def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, dir_x, dir_y, W, H, z_buffer,
@@ -86,8 +98,11 @@ class BillboardSprite(BaseSprite):
 
     # self.texture = AnimationDescriptor()
 
-    def __init__(self, texture, position, resolution, vertical_position=0, vertical_scale=1, horizontal_scale=1, velocity=(0, 0), fps=None):
-        super(BillboardSprite, self).__init__(position, velocity, 1, 1)  # change 1,1 later!
+    def __init__(self, texture, position, vertical_position=0, vertical_scale=1, horizontal_scale=1, velocity=(0, 0),
+                 fps=None, looking_direction=structures.Vector2(1, 0), resolution=RenderSettings.resolution(),
+                 tilt=None, rect_size=(1, 1)):  # change 1,1 later!
+        super(BillboardSprite, self).__init__(position, velocity, *rect_size)
+        self.tilt = tilt
         self.billboard_sprites.append(self)
 
         self.resolution = resolution
@@ -97,6 +112,7 @@ class BillboardSprite(BaseSprite):
         self.vertical_scale = vertical_scale
         self.horizontal_scale = horizontal_scale
 
+        self.looking_direction = looking_direction
         self.texture_cache = {}
 
     def check_resolution(self, texture: pg_structures.Texture):
@@ -136,27 +152,31 @@ class BillboardSprite(BaseSprite):
             return texture
 
     @classmethod
-    def draw_all(cls, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt,
-                 global_val):
-        converted_viewer_position = Map.instance.to_global(viewer_position)
-        cls.billboard_sprites.sort(key=lambda sprite: (sprite.position - converted_viewer_position).magnitude_squared(),
+    def draw_all(cls, viewer, camera_plane_length, W, H, z_buffer, resolution, screen):
+        viewer: BillboardSprite
+        cls.billboard_sprites.sort(key=lambda sprite: (sprite.position - viewer.position).magnitude_squared(),
                                    reverse=True)
 
         for sprite in cls.billboard_sprites:
-            sprite.draw_3D(viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt,
-                           global_val)
+            sprite.draw_3D(viewer, camera_plane_length, W, H, z_buffer, resolution, screen)
 
-    def draw_3D(self, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt,
-                global_val):
+    def self_draw(self):
+        pass
+
+    def draw_3D(self, viewer, camera_plane_length, W, H, z_buffer, resolution, screen):
+        viewer: BillboardSprite
+        if viewer is self:
+            return self.self_draw()
+
+        viewer_position = Map.instance.to_local(viewer.position)
         texture = self.get_current_texture()
         image = texture.texture
-        try:
-            texture_cache = self.texture_cache[texture]
-        except KeyError:
-            texture_cache = self.texture_cache[texture] = {}
+
+        dir_ = viewer.looking_direction.normalized()
+        camera_plane = dir_.tangent() * camera_plane_length
 
         pos = Map.instance.to_local(self.position)
-        scaled_texture = None
+
         for x, y_texture_start, y_start, y_height, tex_x, draw_height in cast_sprite(
                 pos[0], pos[1],
                 viewer_position[0], viewer_position[1],
@@ -165,41 +185,15 @@ class BillboardSprite(BaseSprite):
                 W, H,
                 z_buffer,
                 image.get_width(), image.get_height(),
-                height,
-                tilt,
+                viewer.vertical_position,
+                viewer.tilt,
                 self.vertical_position,
                 self.vertical_scale,
                 self.horizontal_scale,
 
         ):
-            # if global_val > 0:
-            #     y_height *= 1.2
-            # y_height - actual height drawn to screen
-            # draw_height - supposing "height"
-            # 4275 1069 4275
-            # print(pixels_per_texel)
-            # print(int(pixels_per_texel * texture.get_height()), y_height, draw_height, y_height == draw_height)
-            # if scaled_texture is None:
-            #     scaled_texture = self.texture_cache.get(draw_height, None)
-            #     if scaled_texture is None:
-            #         scaled_texture = pygame.transform.scale(texture, (resolution * texture.get_width(),
-            #                                                           draw_height))
-            #         texture_cache[draw_height] = scaled_texture
-            # # if col_height > 0 and col_start < tex_height:
-            # try:
-            #     cr = resolution
-            #     start = round(tex_x) * resolution
-            #     if start + resolution > scaled_texture.get_width():
-            #         cr = scaled_texture.get_width() - start
-            #     column = scaled_texture.subsurface((start, y_texture_start, cr, y_height))
-            # except Exception as e:
-            #
-            #     # continue
-            #     raise e
             column = texture.get_stripe(tex_x, draw_height, y_texture_start, y_height)
             if column is not None:
-                # if global_val > 0:
-                    # column = pygame.transform.scale(column, (resolution, y_height), )
                 screen.blit(column, (x, y_start))
 
     def get_current_texture(self):
@@ -228,9 +222,10 @@ class LostSoul(BillboardSprite):
         self.vertical_velocity += -(self.vertical_position - self.offset) * self.frequency ** 2
         self.vertical_position += self.vertical_velocity * dt
 
-    def set_animation(self, texture):
-        super(LostSoul, self).set_animation(texture, fps=5)
-        self.animation.modify_images(lambda x: x.set_colorkey((0, 255, 255)), False)
+    def get_animation(self, texture, repeat=False, fps=None):
+        animation = super(LostSoul, self).get_animation(texture, repeat, fps)
+        animation.modify_images(lambda x: x.set_colorkey((0, 255, 255)), False)
+        return animation
 
     def get_current_texture(self):
         return super(LostSoul, self).get_current_texture()

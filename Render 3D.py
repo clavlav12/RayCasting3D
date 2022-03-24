@@ -16,13 +16,11 @@ from numba import types
 class Player3D(Player):
 
     def __init__(self, x: int = 0, y: int = 0):
-        self.fov = 90
         self.regular_speed = 50
         self.crouching_speed = self.regular_speed / 2
         self.running_speed = self.regular_speed * 2
         super(Player3D, self).__init__(x, y, self.regular_speed)
         # physics
-        self.ground_height = 1
         self.vertical_velocity = 0
         self.jump_velocity = 4
         self.jumping = True
@@ -422,7 +420,7 @@ class Render3D:
         ts = FasterMap.Map.instance.tile_size
         for (x, y), id_ in lst:
             BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), self.resolution, vertical_scale=2, horizontal_scale=1)
-        LS = PanoramicSprites.PanoramicLostSoul(player.position + (100x, 1), structures.Vector2(*player.looking_direction))
+        LS = PanoramicSprites.PanoramicLostSoul(player.position + (100, 1), structures.Vector2(1, 0))
 
     def render_rays(self):
         dir_ = self.player.looking_direction.normalized()

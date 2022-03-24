@@ -33,12 +33,12 @@ class BaseSprite(pygame.sprite.Sprite):
 
     def _update(self, dt, keys):
         self.update_bef(dt, keys)
-        self.move(keys)
+        self.move(keys, dt)
         self.update_kinematics(dt)
         self.update_aft(dt, keys)
         self.draw()
 
-    def move(self, keys):
+    def move(self, keys, dt):
         pass
 
     def update_kinematics(self, dt):

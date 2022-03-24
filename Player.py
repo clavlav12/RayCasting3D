@@ -9,19 +9,19 @@ from Sprites3D.BillboardSprite import BillboardSprite
 dx = 0.000001
 
 
-class Player(BaseSprite):
+class Player(BillboardSprite):
     RECT_SIZE = 10
 
     def __init__(self, x=0, y=0, speed=500):
         self.distance_from_wall = 10
-        super(Player, self).__init__((x, y), (0, 0), self.RECT_SIZE, self.RECT_SIZE)
+        super(Player, self).__init__(None, (x, y), velocity=(0, 0), rect_size=(self.RECT_SIZE, self.RECT_SIZE))
         self.key_to_function = {}
         self.speed = speed
         self.moving_direction = structures.Vector2(0, 0)
         self.looking_direction = structures.Vector2(0.88838, 0.45911)
         self.setup_movement()
 
-    def move(self, keys):
+    def move(self, keys, dt):
         self.moving_direction.x = 0
         self.moving_direction.y = 0
         for key, function in self.key_to_function.items():

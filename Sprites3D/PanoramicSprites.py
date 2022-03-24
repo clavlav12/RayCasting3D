@@ -32,12 +32,7 @@ class DirectionalSprite(Sprites3D.BillboardSprite.BillboardSprite):
     """
 
     def __init__(self, position, looking_direction, animations_dict, velocity=(0, 0)):
-        super(DirectionalSprite, self).__init__(None, position, 3, velocity=velocity)
-        try:
-            self.moving_direction = self.velocity.normalized()
-        except ZeroDivisionError:
-            self.moving_direction = structures.Vector2(0, 0)
-        self.looking_direction = structures.Vector2(*looking_direction)
+        super(DirectionalSprite, self).__init__(None, position, 3, velocity=velocity, looking_direction=structures.Vector2(*looking_direction))
 
         self.animations = closestDict((angle, self.get_animation(texture)) for angle, texture in animations_dict.items())
         #
@@ -70,9 +65,14 @@ class PanoramicLostSoul(DirectionalSprite):
                                                     180+45*1: r'Sprites\3D_Attempt\315',
                                                     180+45*2: r'Sprites\3D_Attempt\270',
                                                     180+45*3: r'Sprites\3D_Attempt\225',
-                                                    180+45*4: r'Sprites\3D_Attempt\180',
-                                                    180+45*5: r'Sprites\3D_Attempt\135',
-                                                    180+45*6: r'Sprites\3D_Attempt\90',
-                                                    180+45*7: r'Sprites\3D_Attempt\45'
+                                                    (180+45*4) % 360: r'Sprites\3D_Attempt\180',
+                                                    (180+45*5) % 360: r'Sprites\3D_Attempt\135',
+                                                    (180+45*6) % 360: r'Sprites\3D_Attempt\90',
+                                                    (180+45*7) % 360: r'Sprites\3D_Attempt\45'
                                                 }
                                                 )
+        for animation in self.animations.values():
+            animation.modify_images(lambda image: image.set_colorkey((0, 255, 255)))
+
+    # def update_bef(self, dt, keys):
+    #     self.looking_direction *= structures.RotationMatrix()
