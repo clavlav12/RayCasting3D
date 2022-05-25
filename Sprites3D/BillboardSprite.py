@@ -27,22 +27,10 @@ import sys
 #     if isinstance(value, pygame.Surface):
 #         instance.__dict__[self.name] = value
 
-class RenderSettings:
-    Fov = 90
-    Resolution = 3
-
-    @classmethod
-    def fov(cls):
-        return cls.Fov
-
-    @classmethod
-    def resolution(cls):
-        return cls.Resolution
-
-
 @njit()
 def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, dir_x, dir_y, W, H, z_buffer,
                 text_width, text_height, camera_height, tilt, vertical_position, vertical_scale, horizontal_scale):
+
     sprite_x = world_sprite_x - pos_x
     sprite_y = world_sprite_y - pos_y
     inv_det = 1 / (plane_x * dir_y - dir_x * plane_y)
@@ -96,11 +84,15 @@ def cast_sprite(world_sprite_x, world_sprite_y, pos_x, pos_y, plane_x, plane_y, 
 class BillboardSprite(BaseSprite):
     billboard_sprites = []
 
+    RenderSettings = None
     # self.texture = AnimationDescriptor()
 
     def __init__(self, texture, position, vertical_position=0, vertical_scale=1, horizontal_scale=1, velocity=(0, 0),
-                 fps=None, looking_direction=structures.Vector2(1, 0), resolution=RenderSettings.resolution(),
-                 tilt=None, rect_size=(1, 1)):  # change 1,1 later!
+                 fps=None, looking_direction=structures.Vector2(1, 0), resolution=None,
+                 tilt=0, rect_size=(1, 1)):  # change 1,1 later!
+        if resolution is None:
+            resolution = self.RenderSettings.resolution()
+        self.max_view_angle = pg_structures.DisplayMods.current_height
         super(BillboardSprite, self).__init__(position, velocity, *rect_size)
         self.tilt = tilt
         self.billboard_sprites.append(self)
@@ -119,6 +111,15 @@ class BillboardSprite(BaseSprite):
         if not self.resolution == texture.scaled_resolution:
             return texture.copy(texture)
         return texture
+
+    @property
+    def tilt(self):
+        return self._vertical_angle
+
+    @tilt.setter
+    def tilt(self, value):
+        self._vertical_angle = min(max(-self.max_view_angle, value), self.max_view_angle)
+
 
     def get_animation(self, texture, repeat=False, fps=None):
         if isinstance(texture, str):
@@ -176,7 +177,6 @@ class BillboardSprite(BaseSprite):
         camera_plane = dir_.tangent() * camera_plane_length
 
         pos = Map.instance.to_local(self.position)
-
         for x, y_texture_start, y_start, y_height, tex_x, draw_height in cast_sprite(
                 pos[0], pos[1],
                 viewer_position[0], viewer_position[1],
@@ -185,7 +185,7 @@ class BillboardSprite(BaseSprite):
                 W, H,
                 z_buffer,
                 image.get_width(), image.get_height(),
-                viewer.vertical_position,
+                viewer.height,
                 viewer.tilt,
                 self.vertical_position,
                 self.vertical_scale,
@@ -198,6 +198,10 @@ class BillboardSprite(BaseSprite):
 
     def get_current_texture(self):
         return self.animation.get_image()
+
+    @classmethod
+    def initiate(cls, render_settings):
+        cls.RenderSettings = render_settings
 
 
 class LostSoul(BillboardSprite):

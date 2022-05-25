@@ -7,6 +7,7 @@ from FasterMap import Map
 
 class closestDict(dict):
     def closest(self, item, operator=sub):
+        print(item)
         """
         :param item: The item you want the closest key to
         :param operator: The operator used to compare items (returns an integer value that
@@ -50,11 +51,9 @@ class DirectionalSprite(Sprites3D.BillboardSprite.BillboardSprite):
     def set_looking_direction(self, new):
         self.looking_direction.set_values(new)
 
-    def draw_3D(self, viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt,
-                global_val):
-        self.animation = self.animations.closest((self.looking_direction.angle() - (self.position - Map.instance.to_global(viewer_position)).angle()) % 360)
-        super(DirectionalSprite, self).draw_3D(viewer_position, camera_plane, dir_, W, H, z_buffer, resolution, screen, height, tilt,
-                                               global_val)
+    def draw_3D(self, viewer, *args, **kwargs):
+        self.animation = self.animations.closest(((self.position - Map.instance.to_global(viewer.position)).angle() - viewer.looking_direction.angle()) % 360)
+        super(DirectionalSprite, self).draw_3D(viewer, *args, **kwargs)
 
 
 class PanoramicLostSoul(DirectionalSprite):

@@ -13,6 +13,19 @@ from numba.typed import Dict
 from numba import types
 
 
+class RenderSettings:
+    Fov = 90
+    Resolution = 3
+
+    @classmethod
+    def fov(cls):
+        return cls.Fov
+
+    @classmethod
+    def resolution(cls):
+        return cls.Resolution
+
+
 class Player3D(Player):
 
     def __init__(self, x: int = 0, y: int = 0):
@@ -39,8 +52,6 @@ class Player3D(Player):
 
         self.max_height = 2
         self.min_height = 0.3
-        self.max_view_angle = pg_structures.DisplayMods.current_height
-
         self.with_ = False
 
     @property
@@ -58,20 +69,13 @@ class Player3D(Player):
         else:
             self._height = value
 
-    @property
-    def vertical_angle(self):
-        return self._vertical_angle
-
-    @vertical_angle.setter
-    def vertical_angle(self, value):
-        self._vertical_angle = min(max(-self.max_view_angle, value), self.max_view_angle)
-
     def update_bef(self, dt, keys):
         diffX = pygame.mouse.get_pos()[0] - pg_structures.DisplayMods.current_width / 2
-        self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / self.fov * 30, False)
+        self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / RenderSettings.fov() * 30, False)
         # self.looking_direction = self.looking_direction * structures.RotationMatrix(90 * dt * self.sensitivity_x, True)
         diffY = pygame.mouse.get_pos()[1] - pg_structures.DisplayMods.current_height / 2
-        self.vertical_angle -= diffY * self.sensitivity_y
+        self.tilt -= diffY * self.sensitivity_y
+
         pygame.mouse.set_pos(pg_structures.DisplayMods.current_width / 2, pg_structures.DisplayMods.current_height / 2)
 
         self.ground_height = 1
@@ -359,7 +363,6 @@ class Render3D:
     instance = None
 
     def __init__(self, player, map_, screen):
-
         self.z_buffer = None
 
         self.W, self.H = screen.get_size()
@@ -412,14 +415,14 @@ class Render3D:
         # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (250 + 50 * 4, 250 + 50 * 1),
         #                                   self.resolution)
         # self.bill = BillboardSprite.BillboardSprite(texture, (75, 75), self.resolution)
-        self.bill = BillboardSprite.BillboardSprite(texture, (100, 110), self.resolution, vertical_scale=2, horizontal_scale=2)
+        self.bill = BillboardSprite.BillboardSprite(texture, (100, 110), vertical_scale=2, horizontal_scale=2)
         # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (150, 75), self.resolution)
         pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (100, 1450), self.resolution, )
         textures: dict = pg_structures.Texture.textures_list()
         lst = json.load(open(r'D:\GitHub Repositories\RayCasting3D\MapsManipulations\sprites_map.pickle', 'rb'))
         ts = FasterMap.Map.instance.tile_size
         for (x, y), id_ in lst:
-            BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), self.resolution, vertical_scale=2, horizontal_scale=1)
+            BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), vertical_scale=2, horizontal_scale=1)
         LS = PanoramicSprites.PanoramicLostSoul(player.position + (100, 1), structures.Vector2(1, 0))
 
     def render_rays(self):
@@ -448,7 +451,7 @@ class Render3D:
         for x, colStart, colHeight, yStart, yHeight, color, texX, buffer, tile_id in \
                 FasterMap.cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x,
                                       dir_.y,
-                                      camera_plane.y, self.H, self.player.vertical_angle, self.player.height,
+                                      camera_plane.y, self.H, self.player.tilt, self.player.height,
                                       widths, heights):
             if x < 0:
                 break
@@ -465,15 +468,12 @@ class Render3D:
                 screen.blit(column, (x, yStart))
         self.z_buffer = buffer
 
-        BillboardSprite.BillboardSprite.draw_all(pos, camera_plane, dir_, self.W, self.H, self.z_buffer,
-                                                 self.resolution, screen, self.player.height,
-                                                 self.player.vertical_angle,
-                                                 global_val)
-
+        BillboardSprite.BillboardSprite.draw_all(self.player, self.camera_plane_length, self.W, self.H, self.z_buffer,
+                                                 self.resolution, screen)
         return screen
 
     def render_background(self):
-        Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.vertical_angle,
+        Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.tilt,
                                    self.map, self.camera_plane_length, self.player.position, self.player.height)
 
 
@@ -499,6 +499,7 @@ def main():
 
     font = pygame.font.SysFont("Roboto", 40)
     color = pygame.Color('white')
+    BillboardSprite.BillboardSprite.initiate(RenderSettings)
 
     player = Player3D(100, 1500)
     map_ = FasterMap.Map.from_file(r'D:\GitHub Repositories\RayCasting3D\MapsManipulations\map.txt')

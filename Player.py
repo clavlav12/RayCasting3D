@@ -14,7 +14,7 @@ class Player(BillboardSprite):
 
     def __init__(self, x=0, y=0, speed=500):
         self.distance_from_wall = 10
-        super(Player, self).__init__(None, (x, y), velocity=(0, 0), rect_size=(self.RECT_SIZE, self.RECT_SIZE))
+        super(Player, self).__init__(None, (x, y), velocity=(0, 0), rect_size=(self.RECT_SIZE, self.RECT_SIZE), tilt=0)
         self.key_to_function = {}
         self.speed = speed
         self.moving_direction = structures.Vector2(0, 0)
