@@ -7,7 +7,6 @@ from FasterMap import Map
 
 class closestDict(dict):
     def closest(self, item, operator=sub):
-        print(item)
         """
         :param item: The item you want the closest key to
         :param operator: The operator used to compare items (returns an integer value that
@@ -60,14 +59,14 @@ class PanoramicLostSoul(DirectionalSprite):
     def __init__(self, position, looking_direction):
         super(PanoramicLostSoul, self).__init__(position, looking_direction,
                                                 {
-                                                    180+45*0: r'Sprites\3D_Attempt\0',
-                                                    180+45*1: r'Sprites\3D_Attempt\315',
-                                                    180+45*2: r'Sprites\3D_Attempt\270',
-                                                    180+45*3: r'Sprites\3D_Attempt\225',
-                                                    (180+45*4) % 360: r'Sprites\3D_Attempt\180',
-                                                    (180+45*5) % 360: r'Sprites\3D_Attempt\135',
-                                                    (180+45*6) % 360: r'Sprites\3D_Attempt\90',
-                                                    (180+45*7) % 360: r'Sprites\3D_Attempt\45'
+                                                    90+45*0: r'Sprites\3D_Attempt\0',
+                                                    90+45*1: r'Sprites\3D_Attempt\315',
+                                                    90+45*2: r'Sprites\3D_Attempt\270',
+                                                    90+45*3: r'Sprites\3D_Attempt\225',
+                                                    (90+45*4) % 360: r'Sprites\3D_Attempt\180',
+                                                    (90+45*5) % 360: r'Sprites\3D_Attempt\135',
+                                                    (90+45*6) % 360: r'Sprites\3D_Attempt\90',
+                                                    (90+45*7) % 360: r'Sprites\3D_Attempt\45'
                                                 }
                                                 )
         for animation in self.animations.values():

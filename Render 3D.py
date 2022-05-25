@@ -409,7 +409,6 @@ class Render3D:
 
         texture = pygame.image.load(r'Assets\Images\Sprites\transparentBarrel.png  ').convert()
         # texture.set_colorkey(pygame.Color('black'))
-        print(self.player.position)
         # self.bill = BillboardSprite.BillboardSprite(texture, (250, 250), self.resolution)
         # self.bill = BillboardSprite.BillboardSprite(texture, (250 + 50 * 3, 250 + 50 * 1), self.resolution)
         # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (250 + 50 * 4, 250 + 50 * 1),
@@ -419,7 +418,7 @@ class Render3D:
         # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (150, 75), self.resolution)
         pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (100, 1450), self.resolution, )
         textures: dict = pg_structures.Texture.textures_list()
-        lst = json.load(open(r'D:\GitHub Repositories\RayCasting3D\MapsManipulations\sprites_map.pickle', 'rb'))
+        lst = json.load(open(r'D:\GitHub Repositories\RayCasting3D\Assets\MapsFiles\sprites_map.pickle', 'rb'))
         ts = FasterMap.Map.instance.tile_size
         for (x, y), id_ in lst:
             BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), vertical_scale=2, horizontal_scale=1)
@@ -502,7 +501,7 @@ def main():
     BillboardSprite.BillboardSprite.initiate(RenderSettings)
 
     player = Player3D(100, 1500)
-    map_ = FasterMap.Map.from_file(r'D:\GitHub Repositories\RayCasting3D\MapsManipulations\map.txt')
+    map_ = FasterMap.Map.from_file(r'D:\GitHub Repositories\RayCasting3D\Assets\MapsFiles\map.txt')
     # map_ = FasterMap.Map.from_file(r'MapsManipulations/map.txt', None)
     renderer = Render3D(player, map_, screen)
     fps = 0
