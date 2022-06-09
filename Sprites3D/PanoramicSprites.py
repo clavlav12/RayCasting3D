@@ -32,7 +32,7 @@ class DirectionalSprite(Sprites3D.BillboardSprite.BillboardSprite):
     """
 
     def __init__(self, position, looking_direction, animations_dict, velocity=(0, 0)):
-        super(DirectionalSprite, self).__init__(None, position, 3, velocity=velocity, looking_direction=structures.Vector2(*looking_direction))
+        super(DirectionalSprite, self).__init__(None, position, 2, velocity=velocity, looking_direction=structures.Vector2(*looking_direction))
 
         self.animations = closestDict((angle, self.get_animation(texture)) for angle, texture in animations_dict.items())
         #

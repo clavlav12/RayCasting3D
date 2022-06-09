@@ -87,7 +87,7 @@ class BillboardSprite(BaseSprite):
     RenderSettings = None
     # self.texture = AnimationDescriptor()
 
-    def __init__(self, texture, position, vertical_position=0, vertical_scale=1, horizontal_scale=1, velocity=(0, 0),
+    def __init__(self, texture, position, vertical_position=1, vertical_scale=1, horizontal_scale=1, velocity=(0, 0),
                  fps=None, looking_direction=structures.Vector2(1, 0), resolution=None,
                  tilt=0, rect_size=(1, 1)):  # change 1,1 later!
         if resolution is None:
@@ -177,24 +177,27 @@ class BillboardSprite(BaseSprite):
         camera_plane = dir_.tangent() * camera_plane_length
 
         pos = Map.instance.to_local(self.position)
-        for x, y_texture_start, y_start, y_height, tex_x, draw_height in cast_sprite(
-                pos[0], pos[1],
-                viewer_position[0], viewer_position[1],
-                camera_plane.x, camera_plane.y,
-                dir_.x, dir_.y,
-                W, H,
-                z_buffer,
-                image.get_width(), image.get_height(),
-                viewer.height,
-                viewer.tilt,
-                self.vertical_position,
-                self.vertical_scale,
-                self.horizontal_scale,
+        try:
+            for x, y_texture_start, y_start, y_height, tex_x, draw_height in cast_sprite(
+                    pos[0], pos[1],
+                    viewer_position[0], viewer_position[1],
+                    camera_plane.x, camera_plane.y,
+                    dir_.x, dir_.y,
+                    W, H,
+                    z_buffer,
+                    image.get_width(), image.get_height(),
+                    viewer.vertical_position,
+                    viewer.tilt,
+                    -(self.vertical_position - 1) * H,
+                    self.vertical_scale,
+                    self.horizontal_scale,
 
-        ):
-            column = texture.get_stripe(tex_x, draw_height, y_texture_start, y_height)
-            if column is not None:
-                screen.blit(column, (x, y_start))
+            ):
+                column = texture.get_stripe(tex_x, draw_height, y_texture_start, y_height)
+                if column is not None:
+                    screen.blit(column, (x, y_start))
+        except ZeroDivisionError:
+            print("checkpoint")
 
     def get_current_texture(self):
         return self.animation.get_image()
@@ -208,8 +211,8 @@ class LostSoul(BillboardSprite):
     def __init__(self, texture, position, resolution):
         super(LostSoul, self).__init__(texture, position, resolution, fps=2)
         self.animation.repeat = True
-        self.amplitude = 50
-        self.offset = -200
+        self.amplitude = 1
+        self.offset = 2
         self.frequency = .5
 
         # p = amplitude * sin(t * frequency) + offset
@@ -221,10 +224,11 @@ class LostSoul(BillboardSprite):
         # so different from previous frame is = frequency * amplitude * cos(dt * frequency)
 
     def update_aft(self, dt, keys):
-        dt = min(1 / 15, dt)
+        dt = min(1 / 60, dt)
         # print(self.vertical_position, self.frequency * self.amplitude * math.cos(dt * self.frequency), math.cos(dt * self.frequency))
         self.vertical_velocity += -(self.vertical_position - self.offset) * self.frequency ** 2
         self.vertical_position += self.vertical_velocity * dt
+        print(self.vertical_position)
 
     def get_animation(self, texture, repeat=False, fps=None):
         animation = super(LostSoul, self).get_animation(texture, repeat, fps)

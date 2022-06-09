@@ -47,8 +47,7 @@ class Player3D(Player):
         self.sensitivity_x = .02 * sensitivity
         self.sensitivity_y = 8 * sensitivity
 
-        self._vertical_angle = 0
-        self._height = 1
+        self.vertical_position = 1
 
         self.max_height = 2
         self.min_height = 0.3
@@ -56,18 +55,18 @@ class Player3D(Player):
 
     @property
     def height(self):
-        return self._height
+        return self.vertical_position
 
     @height.setter
     def height(self, value):
         if value > self.max_height:
-            self._height = self.max_height
+            self.vertical_position = self.max_height
             if self.vertical_velocity > 0:
                 self.vertical_velocity = 0
         elif value < self.min_height:
-            self._height = self.min_height
+            self.vertical_position = self.min_height
         else:
-            self._height = value
+            self.vertical_position = value
 
     def update_bef(self, dt, keys):
         diffX = pygame.mouse.get_pos()[0] - pg_structures.DisplayMods.current_width / 2
@@ -414,23 +413,25 @@ class Render3D:
         # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (250 + 50 * 4, 250 + 50 * 1),
         #                                   self.resolution)
         # self.bill = BillboardSprite.BillboardSprite(texture, (75, 75), self.resolution)
-        self.bill = BillboardSprite.BillboardSprite(texture, (100, 110), vertical_scale=2, horizontal_scale=2)
+        pillar = BillboardSprite.BillboardSprite(texture, (100, 110), vertical_scale=2, horizontal_scale=2)
         # pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (150, 75), self.resolution)
-        pillar = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (100, 1450), self.resolution, )
+        self.bill = BillboardSprite.LostSoul(r'Sprites\Lost Soul\idle', (100, 1450), self.resolution, )
         textures: dict = pg_structures.Texture.textures_list()
-        lst = json.load(open(r'D:\GitHub Repositories\RayCasting3D\Assets\MapsFiles\sprites_map.pickle', 'rb'))
+        lst = json.load(open(r'Assets\MapsFiles\sprites_map.pickle', 'rb'))
         ts = FasterMap.Map.instance.tile_size
         for (x, y), id_ in lst:
             BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), vertical_scale=2, horizontal_scale=1)
-        LS = PanoramicSprites.PanoramicLostSoul(player.position + (100, 1), structures.Vector2(1, 0))
+        self.LS = PanoramicSprites.PanoramicLostSoul(player.position + (100, 1), structures.Vector2(1, 0))
+
+        self.viewer = self.player
 
     def render_rays(self):
-        dir_ = self.player.looking_direction.normalized()
+        dir_ = self.viewer.looking_direction.normalized()
         camera_plane = dir_.tangent() * self.camera_plane_length
         self.cast_and_draw(dir_, camera_plane)
 
     def cast_and_draw(self, dir_, camera_plane):
-        pos = self.map.to_local(self.player.position)
+        pos = self.map.to_local(self.viewer.position)
         resolution = self.resolution
         # screen = pygame.Surface(self.screen.get_size())
         screen = self.screen
@@ -450,7 +451,7 @@ class Render3D:
         for x, colStart, colHeight, yStart, yHeight, color, texX, buffer, tile_id in \
                 FasterMap.cast_screen(self.W, resolution, self.map.map(), pos[0], pos[1], dir_.x, camera_plane.x,
                                       dir_.y,
-                                      camera_plane.y, self.H, self.player.tilt, self.player.height,
+                                      camera_plane.y, self.H, self.viewer.tilt, self.viewer.vertical_position,
                                       widths, heights):
             if x < 0:
                 break
@@ -467,13 +468,13 @@ class Render3D:
                 screen.blit(column, (x, yStart))
         self.z_buffer = buffer
 
-        BillboardSprite.BillboardSprite.draw_all(self.player, self.camera_plane_length, self.W, self.H, self.z_buffer,
+        BillboardSprite.BillboardSprite.draw_all(self.viewer, self.camera_plane_length, self.W, self.H, self.z_buffer,
                                                  self.resolution, screen)
         return screen
 
     def render_background(self):
-        Background.draw_background(self.screen, self.fov, self.player.looking_direction, self.player.tilt,
-                                   self.map, self.camera_plane_length, self.player.position, self.player.height)
+        Background.draw_background(self.screen, self.fov, self.viewer.looking_direction, self.viewer.tilt,
+                                   self.map, self.camera_plane_length, self.viewer.position, self.viewer.vertical_position)
 
 
 global_val = False
@@ -501,7 +502,7 @@ def main():
     BillboardSprite.BillboardSprite.initiate(RenderSettings)
 
     player = Player3D(100, 1500)
-    map_ = FasterMap.Map.from_file(r'D:\GitHub Repositories\RayCasting3D\Assets\MapsFiles\map.txt')
+    map_ = FasterMap.Map.from_file(r'Assets\MapsFiles\map.txt')
     # map_ = FasterMap.Map.from_file(r'MapsManipulations/map.txt', None)
     renderer = Render3D(player, map_, screen)
     fps = 0
@@ -537,6 +538,8 @@ def main():
                     global_val = True
                 elif event.key == pygame.K_j:
                     global_val = False
+                elif event.key == pygame.K_g:
+                    renderer.viewer = renderer.player if renderer.viewer is not player else renderer.bill
         keys = pygame.key.get_pressed()
 
         renderer.render_rays()
