@@ -197,7 +197,8 @@ class BillboardSprite(BaseSprite):
                 if column is not None:
                     screen.blit(column, (x, y_start))
         except ZeroDivisionError:
-            print("checkpoint")
+            pass
+            # print("zeroDivisionError")
 
     def get_current_texture(self):
         return self.animation.get_image()
@@ -205,6 +206,10 @@ class BillboardSprite(BaseSprite):
     @classmethod
     def initiate(cls, render_settings):
         cls.RenderSettings = render_settings
+
+    def kill(self) -> None:
+        super(BillboardSprite, self).kill()
+        self.billboard_sprites.remove(self)
 
 
 class LostSoul(BillboardSprite):
@@ -223,12 +228,12 @@ class LostSoul(BillboardSprite):
         self.vertical_acceleration = 0  # F  = - k * dx, set k to 0 then F = - dx
         # so different from previous frame is = frequency * amplitude * cos(dt * frequency)
 
-    def update_aft(self, dt, keys):
+    def update(self, dt, keys):
         dt = min(1 / 60, dt)
         # print(self.vertical_position, self.frequency * self.amplitude * math.cos(dt * self.frequency), math.cos(dt * self.frequency))
         self.vertical_velocity += -(self.vertical_position - self.offset) * self.frequency ** 2
         self.vertical_position += self.vertical_velocity * dt
-        print(self.vertical_position)
+        # print(self.vertical_position)
 
     def get_animation(self, texture, repeat=False, fps=None):
         animation = super(LostSoul, self).get_animation(texture, repeat, fps)

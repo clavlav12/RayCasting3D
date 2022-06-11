@@ -70,7 +70,8 @@ class Player3D(Player):
 
     def update_bef(self, dt, keys):
         diffX = pygame.mouse.get_pos()[0] - pg_structures.DisplayMods.current_width / 2
-        self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / RenderSettings.fov() * 30, False)
+        self.looking_direction = self.looking_direction * structures.RotationMatrix(diffX / RenderSettings.fov() * 30,
+                                                                                    False)
         # self.looking_direction = self.looking_direction * structures.RotationMatrix(90 * dt * self.sensitivity_x, True)
         diffY = pygame.mouse.get_pos()[1] - pg_structures.DisplayMods.current_height / 2
         self.tilt -= diffY * self.sensitivity_y
@@ -223,7 +224,6 @@ class Background:
 
             self.arg = np.asarray([texture.array for texture in folder])
 
-
     def imaged_init(self):
         image = pygame.image.load('Assets/Images/Background/' + self.arg)
         assert image.get_height() < self.H * 1.5, 'Deal with it later'
@@ -280,15 +280,16 @@ class Background:
                                                         self.is_floor
                                                         )
                 elif isinstance(self.arg, self.BIG_TEXTURE):
-                    background = self.get_floor_ceiling_big_texture(map_, position, looking_direction, camera_plane_length, screen,
-                                          self.arg.big_texture.array,
+                    background = self.get_floor_ceiling_big_texture(map_, position, looking_direction,
+                                                                    camera_plane_length, screen,
+                                                                    self.arg.big_texture.array,
                                                                     8,
                                                                     self.arg.default.array,
-                                          pg_structures.IndexedTexture.palette,
-                                          height,
-                                          vertical_angle,
-                                          self.is_floor
-                                          )
+                                                                    pg_structures.IndexedTexture.palette,
+                                                                    height,
+                                                                    vertical_angle,
+                                                                    self.is_floor
+                                                                    )
 
             except Exception as e:
                 raise e
@@ -297,14 +298,12 @@ class Background:
     @staticmethod
     def get_floor_ceiling(map_, position, looking_direction, camera_plane_length, screen, textures_map, textures_list,
                           palette, height, vertical_angle, is_floor):
-        
-        
+
         s = screen
         dir_ = looking_direction.normalized()
         camera_plane = dir_.tangent() * camera_plane_length
         pos = map_.to_local(position)
-        
-        
+
         buffer = FasterMap.cast_floor_ceiling(*dir_, *camera_plane, screen.get_width(), screen.get_height(), *pos,
                                               textures_list, textures_map,
                                               height,
@@ -336,7 +335,7 @@ class Background:
 
         screen = pygame.surfarray.make_surface(buffer)
         screen.set_palette(palette)
-        #screen = pygame.transform.scale(screen, (s.get_width(), s.get_height()//2))
+        # screen = pygame.transform.scale(screen, (s.get_width(), s.get_height()//2))
 
         return screen
 
@@ -360,6 +359,31 @@ class Background:
 
 class Render3D:
     instance = None
+
+    class TempViewer(BillboardSprite.BillboardSprite):
+        def __init__(self, origin: BillboardSprite.BillboardSprite, target: BillboardSprite.BillboardSprite,
+                     set_viewer_method):
+            self.target = target
+
+            def spriteToFunc(sprite: BillboardSprite.BillboardSprite):
+                return (lambda: sprite.position.x,
+                        lambda: sprite.position.y,
+                        lambda: sprite.looking_direction.angle(),
+                        lambda: sprite.vertical_position)
+
+            self.scroller = structures.Scroller(*spriteToFunc(target),
+                                                *origin.position, origin.looking_direction.angle(), origin.vertical_position)
+            super(Render3D.TempViewer, self).__init__(origin.position.copy(), (0, 0), )
+            self.set_viewer_method = set_viewer_method
+
+        def update(self, dt, keys):
+            self.scroller.update()
+            self.position.set_values(*self.scroller.current_position)
+            if (self.target.position - self.position).magnitude_squared() < 5:
+                self.set_viewer_method(self.target)
+
+            self.looking_direction.set_values(*structures.Vector2.unit_vector(self.scroller.current_angle))
+            self.vertical_position = self.scroller.current_height
 
     def __init__(self, player, map_, screen):
         self.z_buffer = None
@@ -420,10 +444,21 @@ class Render3D:
         lst = json.load(open(r'Assets\MapsFiles\sprites_map.pickle', 'rb'))
         ts = FasterMap.Map.instance.tile_size
         for (x, y), id_ in lst:
-            BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), vertical_scale=2, horizontal_scale=1)
+            BillboardSprite.BillboardSprite(textures[int(id_)], (x * ts + ts // 2, y * ts + ts // 2), vertical_scale=2,
+                                            horizontal_scale=1)
         self.LS = PanoramicSprites.PanoramicLostSoul(player.position + (100, 1), structures.Vector2(1, 0))
 
-        self.viewer = self.player
+        self.viewer = None
+        self.set_viewer(self.player)
+
+    def set_viewer(self, viewer: BillboardSprite.BillboardSprite, smooth=True):
+        if isinstance(self.viewer, Render3D.TempViewer):
+            self.viewer.kill()
+        if self.viewer is None or not smooth:
+            self.viewer = viewer
+        else:
+            temp = Render3D.TempViewer(self.viewer, viewer, lambda viewer: self.set_viewer(viewer, smooth=False))
+            self.viewer = temp
 
     def render_rays(self):
         dir_ = self.viewer.looking_direction.normalized()
@@ -474,7 +509,8 @@ class Render3D:
 
     def render_background(self):
         Background.draw_background(self.screen, self.fov, self.viewer.looking_direction, self.viewer.tilt,
-                                   self.map, self.camera_plane_length, self.viewer.position, self.viewer.vertical_position)
+                                   self.map, self.camera_plane_length, self.viewer.position,
+                                   self.viewer.vertical_position)
 
 
 global_val = False
@@ -485,8 +521,8 @@ def main():
     pygame.init()
     screen = pg_structures.DisplayMods.Windowed((800 * 16 // 9, 800))
     # screen = pg_structures.DisplayMods.FullScreenAccelerated()
-    #resScale = 2
-    #screen = pygame.Surface((1920/resScale, 1080/resScale)).convert()
+    # resScale = 2
+    # screen = pygame.Surface((1920/resScale, 1080/resScale)).convert()
     # resolution = 1
     # screen = pygame.Surface((real_screen.get_width() // resolution, real_screen.get_height() // resolution)).convert()
     # screen.set_alpha(None)
@@ -539,7 +575,7 @@ def main():
                 elif event.key == pygame.K_j:
                     global_val = False
                 elif event.key == pygame.K_g:
-                    renderer.viewer = renderer.player if renderer.viewer is not player else renderer.bill
+                    renderer.set_viewer(structures.toggle(renderer.bill, renderer.player))
         keys = pygame.key.get_pressed()
 
         renderer.render_rays()
@@ -567,7 +603,7 @@ def main():
 
         # new = screen
         # new = pygame.transform.scale(screen, real_screen.get_size(), real_screen)
-        #pygame.transform.scale(screen, Realscreen.get_size(), Realscreen)
+        # pygame.transform.scale(screen, Realscreen.get_size(), Realscreen)
         pygame.display.update()
 
     print(fps / frames)

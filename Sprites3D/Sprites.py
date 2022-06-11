@@ -19,11 +19,12 @@ class BaseSprite(pygame.sprite.Sprite):
         self.rh = rect_height
 
         self.sprites.append(self)
+        self.alive = True
 
     def update_bef(self, dt, keys):
         pass
 
-    def update_aft(self, dt, keys):
+    def update(self, dt, keys):
         pass
 
     @classmethod
@@ -35,7 +36,7 @@ class BaseSprite(pygame.sprite.Sprite):
         self.update_bef(dt, keys)
         self.move(keys, dt)
         self.update_kinematics(dt)
-        self.update_aft(dt, keys)
+        self.update(dt, keys)
         self.draw()
 
     def move(self, keys, dt):
@@ -95,4 +96,7 @@ class BaseSprite(pygame.sprite.Sprite):
         except IndexError:
             return None
 
-
+    def kill(self):
+        super(BaseSprite, self).kill()
+        self.sprites.remove(self)
+        self.alive = False

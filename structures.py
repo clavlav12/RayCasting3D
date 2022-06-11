@@ -1,3 +1,5 @@
+from dataclasses import dataclass, asdict, astuple
+from typing import Union
 from enum import Enum, auto
 from threading import Thread
 import math
@@ -74,6 +76,7 @@ class BackgroundType(Enum):
     solid = auto()
     image = auto()
     textured = auto()
+
 
 class DegTrigo:
 
@@ -171,18 +174,26 @@ class RotationMatrix:
             RotationMatrix.ROT90 = RotationMatrix(90)
             RotationMatrix.ROT180 = RotationMatrix(180)
             RotationMatrix.ROT270 = RotationMatrix(270)
+
+
 RotationMatrix.init()
+
 
 class Vector2:
     def __init__(self, x, y):  # parm = (r, theta) or (x, y)
         self.x = x
         self.y = y
 
+    @classmethod
+    def unit_vector(cls, angle):
+        return Vector2(DegTrigo.cos(angle), DegTrigo.sin(angle))
+
     def angle(self):
-        return math.degrees(math.atan2(self.y, self.x))# + 180
+        return math.degrees(math.atan2(self.y, self.x))  # + 180
 
     def mag(self):
         return math.hypot(self.x, self.y)
+
     def normalized(self):
         mag = math.hypot(self.x, self.y)
         return Vector2(self.x / mag, self.y / mag)
@@ -396,9 +407,111 @@ class Vector2:
     def to_pos(self):
         return tuple(self.floor())
 
+    def copy(self):
+        return self.__class__(self.x, self.y)
+
+
+class Scroller:  # tested
+    SCROLL_DELAY = 20  # the high it is the slower it takes to scroll to the player location
+
+    @dataclass
+    class camera:
+        x: Union[float, callable]
+        y: Union[float, callable]
+        angle: Union[float, callable]
+        height: Union[float, callable]
+
+        @staticmethod
+        def attr_value(value):
+            if callable(value):
+                return value()
+            return value
+
+        def get_current(self):
+            c = Scroller.camera(
+                self.attr_value(self.x),
+                self.attr_value(self.y),
+                self.attr_value(self.angle),
+                self.attr_value(self.height)
+            )
+            return c
+
+    @classmethod
+    def build_callable_values(cls, x, y, angle, height):
+        camera_attributes = [x, y, angle, height]
+        for idx, value in enumerate(camera_attributes):
+            if isinstance(value, int):
+                camera_attributes[idx] = lambda: value
+            elif callable(value):
+                camera_attributes[idx] = value  # a function which returns the focus point
+            else:
+                raise AttributeError(f"Invalid value {list(cls.camera.__dataclass_fields__)[idx]}")
+        return cls.camera(*camera_attributes)
+
+    def __init__(self, x, y, angle, height, starting_x=None, starting_y=None,
+                 starting_angle=None, starting_height=None, delay=SCROLL_DELAY):
+
+        self.target_camera = self.build_callable_values(x, y, angle, height)
+        self.current_camera = self.camera(starting_x or self.target_camera.x(),
+                                          starting_y or self.target_camera.y(),
+                                          starting_angle or self.target_camera.angle(),
+                                          starting_height or self.target_camera.height())
+        self.last_change = self.camera(0, 0, 0, 0)  # not necessary, makes movement smoother
+        # (to make it constant the function just need to be pure)
+        self.delay = delay
+
+    def __str__(self):
+        return str(self.current_camera)
+
+    @property
+    def current_position(self):
+        return self.current_camera.x, self.current_camera.y
+
+    @property
+    def current_angle(self):
+        return self.current_camera.angle
+
+    @property
+    def current_height(self):
+        return self.current_camera.height
+
+    def __set_abs_values(self, new_camera):
+        """Sets the position without a smooth transition"""
+        self.current_camera = new_camera
+
+    def set_to(self, x, y, angle, height, smooth_move=False):
+        """Sets the position of the scroller to position. For a smooth transition, pass smooth_move=True."""
+        self.target_camera = self.build_callable_values(x, y, angle, height)
+        if not smooth_move:  # for a smooth transition just wait
+            self.__set_abs_values(self.target_camera)
+
+    def update(self):
+        """Updates the scroller, called each frame"""
+
+        current_target = self.target_camera.get_current()
+        for current_attribute, current_attribute_value in asdict(self.current_camera).items():
+
+            target_attribute = current_target.__getattribute__(current_attribute)
+            delta = target_attribute - current_attribute_value
+            if abs(delta < 3) and \
+                    (abs(delta) < abs(self.last_change.__getattribute__(current_attribute))):  # makes movement
+                # smoother, finishes at once instead of getting this 0.00000001
+                delta += sign(int(delta)) * Scroller.SCROLL_DELAY
+
+            self.current_camera.__setattr__(current_attribute, current_attribute_value + delta / Scroller.SCROLL_DELAY)
+            self.last_change.__setattr__(current_attribute, delta)
+        print('updt', self.current_camera, self.target_camera.get_current())
+
+
+def toggle(a, b, dont_specify=[-1]):
+    dont_specify[0] += 1
+    if dont_specify[0] % 2 == 0:
+        return a
+    return b
+
 
 if __name__ == '__main__':
     vec = Vector2.Cartesian(2, 3)
     angle = 10
     matrix = RotationMatrix(angle)
-    print(vec.rotated(angle),  vec * matrix)
+    print(vec.rotated(angle), vec * matrix)
