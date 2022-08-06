@@ -437,12 +437,10 @@ class Scroller:  # tested
             )
             return c
 
-    minimum_steps = camera()
-
     @classmethod
     def build_callable_values(cls, x, y, angle, height):
         camera_attributes = [x, y, angle, height]
-        for idx , value in enumerate(camera_attributes):
+        for idx, value in enumerate(camera_attributes):
             if isinstance(value, int):
                 camera_attributes[idx] = lambda: value
             elif callable(value):
@@ -452,7 +450,7 @@ class Scroller:  # tested
         return cls.camera(*camera_attributes)
 
     def __init__(self, x, y, angle, height, starting_x=None, starting_y=None,
-                 starting_angle=None, starting_height=None, delay=SCROLL_DELAY, debug=False):
+                 starting_angle=None, starting_height=None, delay=SCROLL_DELAY, debug=False, minimum_fraction=.005):
 
         self.target_camera = self.build_callable_values(x, y, angle, height)
         self.current_camera = self.camera(starting_x or self.target_camera.x(),
@@ -460,8 +458,20 @@ class Scroller:  # tested
                                           starting_angle or self.target_camera.angle(),
                                           starting_height or self.target_camera.height())
         self.last_change = self.camera(0, 0, 0, 0)  # not necessary, makes movement smoother
+        self.minimum_fraction = minimum_fraction
+        self.calc_minimum_steps()
+
         # (to make it constant the function just need to be pure)
         self.delay = delay
+
+    def calc_minimum_steps(self):
+        target = self.target_camera.get_current()
+        self.minimum_steps = self.camera(
+            (target.x - self.current_camera.x) * self.minimum_fraction,
+            (target.y - self.current_camera.y) * self.minimum_fraction,
+            (target.angle - self.current_camera.angle) * self.minimum_fraction,
+            (target.height - self.current_camera.height) * self.minimum_fraction,
+            )
 
     def __str__(self):
         return str(self.current_camera)
@@ -487,6 +497,7 @@ class Scroller:  # tested
         self.target_camera = self.build_callable_values(x, y, angle, height)
         if not smooth_move:  # for a smooth transition just wait
             self.__set_abs_values(self.target_camera)
+        self.calc_minimum_steps()
 
     def update(self):
         """Updates the scroller, called each frame"""
@@ -497,13 +508,18 @@ class Scroller:  # tested
             target_attribute = current_target.__getattribute__(current_attribute)
             delta = target_attribute - current_attribute_value
 
-            delta = max(abs(delta), ) * sign(delta)
+            delta /= Scroller.SCROLL_DELAY
             # if abs(delta < 3) and \
             #         (abs(delta) < abs(self.last_change.__getattribute__(current_attribute))):  # makes movement
             #     # smoother, finishes at once instead of getting this 0.00000001
             #     delta += sign(int(delta)) * Scroller.SCROLL_DELAY
 
-            next_step = delta / Scroller.SCROLL_DELAY + current_attribute_value
+            s = sign(delta)
+            true_delta = max(abs(delta), abs(self.minimum_steps.__getattribute__(current_attribute)))
+
+            delta = true_delta * s
+
+            next_step = delta + current_attribute_value
 
             if (next_step - target_attribute) * (target_attribute - current_attribute_value) > 0: # too big
                 next_step = current_attribute_value

@@ -513,7 +513,7 @@ class Render3D:
                                    self.viewer.vertical_position)
 
 
-global_val = False
+global_val = 0
 
 
 def main():
@@ -563,10 +563,10 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:
                     player.with_ = False
-                    global_val += 2
+                    global_val += .01
                 elif event.button == 5:
                     player.with_ = True
-                    global_val -= 2
+                    global_val -= .01
                 elif event.button == 1:
                     pistol.shoot()
             elif event.type == pygame.KEYDOWN:
@@ -576,6 +576,7 @@ def main():
                     global_val = False
                 elif event.key == pygame.K_g:
                     renderer.set_viewer(structures.toggle(renderer.bill, renderer.player))
+
         keys = pygame.key.get_pressed()
 
         renderer.render_rays()
