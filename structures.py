@@ -416,6 +416,7 @@ class Scroller:  # tested
 
     @dataclass
     class camera:
+        
         x: Union[float, callable]
         y: Union[float, callable]
         angle: Union[float, callable]
@@ -436,10 +437,12 @@ class Scroller:  # tested
             )
             return c
 
+    minimum_steps = camera()
+
     @classmethod
     def build_callable_values(cls, x, y, angle, height):
         camera_attributes = [x, y, angle, height]
-        for idx, value in enumerate(camera_attributes):
+        for idx , value in enumerate(camera_attributes):
             if isinstance(value, int):
                 camera_attributes[idx] = lambda: value
             elif callable(value):
@@ -449,7 +452,7 @@ class Scroller:  # tested
         return cls.camera(*camera_attributes)
 
     def __init__(self, x, y, angle, height, starting_x=None, starting_y=None,
-                 starting_angle=None, starting_height=None, delay=SCROLL_DELAY):
+                 starting_angle=None, starting_height=None, delay=SCROLL_DELAY, debug=False):
 
         self.target_camera = self.build_callable_values(x, y, angle, height)
         self.current_camera = self.camera(starting_x or self.target_camera.x(),
@@ -493,14 +496,19 @@ class Scroller:  # tested
 
             target_attribute = current_target.__getattribute__(current_attribute)
             delta = target_attribute - current_attribute_value
-            if abs(delta < 3) and \
-                    (abs(delta) < abs(self.last_change.__getattribute__(current_attribute))):  # makes movement
-                # smoother, finishes at once instead of getting this 0.00000001
-                delta += sign(int(delta)) * Scroller.SCROLL_DELAY
 
-            self.current_camera.__setattr__(current_attribute, current_attribute_value + delta / Scroller.SCROLL_DELAY)
+            delta = max(abs(delta), ) * sign(delta)
+            # if abs(delta < 3) and \
+            #         (abs(delta) < abs(self.last_change.__getattribute__(current_attribute))):  # makes movement
+            #     # smoother, finishes at once instead of getting this 0.00000001
+            #     delta += sign(int(delta)) * Scroller.SCROLL_DELAY
+
+            next_step = delta / Scroller.SCROLL_DELAY + current_attribute_value
+
+            if (next_step - target_attribute) * (target_attribute - current_attribute_value) > 0: # too big
+                next_step = current_attribute_value
+            self.current_camera.__setattr__(current_attribute, next_step)
             self.last_change.__setattr__(current_attribute, delta)
-        print('updt', self.current_camera, self.target_camera.get_current())
 
 
 def toggle(a, b, dont_specify=[-1]):

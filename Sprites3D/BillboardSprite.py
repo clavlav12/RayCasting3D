@@ -104,7 +104,7 @@ class BillboardSprite(BaseSprite):
         self.vertical_scale = vertical_scale
         self.horizontal_scale = horizontal_scale
 
-        self.looking_direction = looking_direction
+        self.looking_direction = looking_direction.copy()
         self.texture_cache = {}
 
     def check_resolution(self, texture: pg_structures.Texture):
